@@ -320,13 +320,37 @@ def decouper(y, groupes=None):
     return next(decoupe.split(np.zeros(len(y)), y, groupes))
 
 
-def entrainer(df, texte, avec_delai, groupes=None):
+def decoupe_temporelle(df, groupes, part_test=0.25):
+    """Apprendre sur le passé, être noté sur l'avenir.
+
+    On coupe sur la date de publication, celle qui dit quand le Bureau a reçu le
+    dossier, et on coupe par événement : un événement bascule en entier du côté de
+    sa première publication, pour ne pas défaire la phase 7.
+    """
+    par_groupe = (
+        pl.DataFrame({"groupe": groupes, "publie": df["date_posted"]})
+        .group_by("groupe")
+        .agg(pl.col("publie").min().alias("publie"), pl.len().alias("taille"))
+        .sort("publie")
+    )
+    cumul = par_groupe["taille"].cum_sum()
+    limite = int(df.height * (1 - part_test))
+    au_train = par_groupe.filter(cumul <= limite)["groupe"].to_list()
+    date_coupure = par_groupe.filter(cumul > limite)["publie"][0]
+
+    marque = np.zeros(int(groupes.max()) + 1, dtype=bool)
+    marque[au_train] = True
+    dans_train = marque[groupes]
+    return np.flatnonzero(dans_train), np.flatnonzero(~dans_train), date_coupure
+
+
+def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
     """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance.
 
     `texte` désigne la colonne de texte donnée au modèle, ou None pour n'en donner aucune.
     """
     y = df["canular"].to_numpy().astype(int)
-    i_train, i_test = decouper(y, groupes)
+    i_train, i_test = decoupe if decoupe is not None else decouper(y, groupes)
 
     blocs_train, blocs_test = [], []
 
@@ -610,6 +634,49 @@ def montrer_evenement(df, groupes, numero, indices_test):
     print(f"  … {len(membres) - 5} autres témoins" if len(membres) > 5 else "")
 
 
+def phase8_ordre_du_temps(df, groupes, avant):
+    """Apprendre sur le passé et être noté sur l'avenir, pas l'inverse."""
+    titre(8, "l'ordre des choses")
+
+    i_train, i_test, coupure = decoupe_temporelle(df, groupes)
+    y = df["canular"].to_numpy().astype(int)
+
+    print("Je coupe sur date_posted, la date à laquelle le Bureau a reçu le dossier,")
+    print("et non sur celle de l'observation : c'est dans cet ordre-là que les dossiers")
+    print("arrivent réellement, et c'est aussi dans cet ordre que le Bureau les annote.")
+    print(f"\nDate de coupure : {coupure}")
+    print(f"{'':<26}{'apprentissage':>15}{'test':>12}")
+    print(f"{'relevés':<26}{len(i_train):>15}{len(i_test):>12}")
+    print(f"{'canulars':<26}{int(y[i_train].sum()):>15}{int(y[i_test].sum()):>12}")
+    print(f"{'proportion de canulars':<26}{y[i_train].mean():>14.2%}{y[i_test].mean():>12.2%}")
+
+    # Les deux proportions diffèrent : d'où ça vient ?
+    par_an = (
+        df.with_columns(an=pl.col("date_posted").dt.year())
+        .group_by("an")
+        .agg(
+            taux=pl.col("canular").mean(),
+            annotes=(pl.col("comments").str.contains(r"\(\(")).mean(),
+        )
+        .sort("an")
+    )
+    print("\nTaux de canulars et d'annotation du Bureau, par année de publication :")
+    for ligne in par_an.iter_rows(named=True):
+        print(f"  {ligne['an']}  canulars {ligne['taux']:>6.2%}   "
+              f"dossiers annotés {ligne['annotes']:>6.2%}")
+
+    apres = entrainer(
+        df, texte="temoignage", avec_delai=False, decoupe=(i_train, i_test)
+    )
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+    return apres, (i_train, i_test, coupure)
+
+
 def main():
     recuperer_la_transmission()
     df = phase1_ouvrir_la_caisse()
@@ -619,7 +686,8 @@ def main():
     avant = phase4_premier_verdict(df)
     honnete, meilleur = phase5_fuite_temporelle(df, avant)
     phase6_modele_du_stagiaire(honnete, meilleur)
-    phase7_un_seul_evenement(df, honnete)
+    par_evenement, groupes = phase7_un_seul_evenement(df, honnete)
+    phase8_ordre_du_temps(df, groupes, par_evenement)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

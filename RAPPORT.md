@@ -223,3 +223,35 @@ Les deux nombres bougent peu. C'est logique : 2 397 relevés étaient mal placé
 chose depuis que la note du Bureau lui a été retirée. La fuite était réelle, son effet ici
 est petit — ça ne rend pas la correction facultative, ça montre qu'elle aurait davantage
 compté sur un modèle qui s'appuyait plus sur le texte.
+
+## Phase 8 — L'ordre des choses
+
+Je coupe sur **`date_posted`**, la date à laquelle le Bureau a reçu le dossier, et non sur
+celle de l'observation. C'est dans cet ordre-là que les dossiers arrivent réellement au
+Bureau, et surtout c'est dans cet ordre qu'il les annote : comme mon étiquette vient de ses
+notes, couper sur la date d'observation laisserait le modèle apprendre d'annotations écrites
+après celles du test. Je coupe aussi par événement, pour ne pas défaire la phase 7.
+
+- Date de coupure : **10 octobre 2011**
+
+|  | Apprentissage | Test |
+|---|---|---|
+| Relevés | 66 509 | 22 170 |
+| Canulars | 707 | 164 |
+| Proportion de canulars | **1,06 %** | **0,74 %** |
+
+|  | Avant | Après |
+|---|---|---|
+| Sur 100 canulars, attrapés | 30 | 34 |
+| Sur 100 signalés, justes | 3 | 2 |
+| AUC | 0,721 | **0,616** |
+
+Les deux proportions ne sont pas égales, et en regardant année par année on comprend
+pourquoi : les canulars n'ont pas diminué, c'est le Bureau qui a changé de pratique. Avant
+2004 il n'annotait presque rien — zéro canular sur 982 relevés en 1998 — les notes
+apparaissent en 2004, culminent vers 2008 à 2,85 %, puis retombent à 0,48 % en 2012.
+
+Mon étiquette ne mesure donc pas la fréquence des canulars mais le rythme de travail des
+annotateurs, et ce rythme change dans le temps. C'est ce qui explique la chute de l'AUC de
+0,721 à 0,616 : le modèle a appris ce qu'était un canular pendant les années fastes de
+l'annotation, et on le note sur une période où le Bureau annotait deux fois moins.
