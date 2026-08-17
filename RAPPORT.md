@@ -286,3 +286,35 @@ un trou à cet endroit, même après que le trou a été bouché.
 | Sur 100 canulars, attrapés | 34 | 34 |
 | Sur 100 signalés, justes | 2 | 2 |
 | AUC | 0,616 | 0,620 |
+
+## Phase 10 — La chaîne de traitement du Bureau
+
+|  | Apprentissage | Test |
+|---|---|---|
+| Relevés | 66 509 | 22 170 |
+| Proportion de canulars | 1,06 % | 0,74 % |
+
+Le test contient 164 canulars. Ce n'est pas énorme, mais c'est assez pour que mes deux
+nombres veuillent dire quelque chose — le risque d'une partie test presque vide, que le
+Conseil signale, ne se réalise pas ici.
+
+Tout ce qui s'apprend depuis les données vit maintenant dans une classe `Chaine` : le
+vocabulaire des mots, la liste des catégories, les médianes qui bouchent les trous, les
+échelles. Sa méthode `apprendre` n'est appelée qu'après la découpe et ne reçoit que la partie
+apprentissage. Elle n'a matériellement pas accès au test.
+
+Et un relevé neuf traverse tout d'un seul appel. Le script en fait passer un, inventé à la
+main, en fin de phase : onze champs bruts entrent, le typage, les variables dérivées, le
+vocabulaire et le modèle s'enchaînent, un verdict sort.
+
+|  | Avant | Après |
+|---|---|---|
+| Sur 100 canulars, attrapés | 34 | 34 |
+| Sur 100 signalés, justes | 2 | 2 |
+| AUC | 0,620 | 0,620 |
+
+Les chiffres ne bougent pas, et je préfère le dire franchement : je calculais déjà mes
+médianes et mon vocabulaire sur la seule partie apprentissage, donc la faute que le Conseil
+cherchait n'était pas commise. Ce qui change n'est pas le résultat mais la garantie. Avant,
+il fallait me croire sur parole en relisant le code ; maintenant c'est la structure qui
+l'impose, puisque l'objet qui apprend ne voit jamais le test.

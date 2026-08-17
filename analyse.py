@@ -154,10 +154,9 @@ def phase1_ouvrir_la_caisse():
 NUMERIQUES = ["duration_seconds", "latitude", "longitude"]
 
 
-def phase2_typer(df):
-    """Chaque champ dans son vrai type, sans supprimer de ligne."""
-    titre(2, "rien n'est du bon type")
-
+def conversions_de_type(avec_recuperation=True):
+    """Les expressions de conversion, sans rien afficher : un relevé neuf doit
+    pouvoir emprunter exactement le même chemin que le fichier d'origine."""
     conversions = {col: pl.col(col).cast(pl.Float64, strict=False) for col in NUMERIQUES}
     conversions["datetime"] = pl.col("datetime").str.to_datetime(
         "%m/%d/%Y %H:%M", strict=False
@@ -166,6 +165,32 @@ def phase2_typer(df):
     conversions["date_posted"] = pl.col("date_posted").str.to_date(
         "%m/%d/%Y", strict=False
     )
+    if avec_recuperation:
+        conversions["datetime"] = (
+            pl.when(pl.col("datetime").str.contains(" 24:"))
+            .then(
+                pl.col("datetime")
+                .str.replace(" 24:", " 00:")
+                .str.to_datetime("%m/%d/%Y %H:%M", strict=False)
+                .dt.offset_by("1d")
+            )
+            .otherwise(conversions["datetime"])
+        )
+    return conversions
+
+
+def preparer(df):
+    """Du relevé brut aux variables du modèle. Aucun apprentissage ici : que des
+    règles fixes, applicables à une ligne comme à 88 000."""
+    df = df.with_columns(**conversions_de_type())
+    return ajouter_indicateurs(ajouter_temoignage(ajouter_delai(df)))
+
+
+def phase2_typer(df):
+    """Chaque champ dans son vrai type, sans supprimer de ligne."""
+    titre(2, "rien n'est du bon type")
+
+    conversions = conversions_de_type(avec_recuperation=False)
 
     print(f"{'champ':<18} {'vides':>6} {'résistent':>10}   valeurs fautives")
     for col, expr in conversions.items():
@@ -197,20 +222,10 @@ def phase2_typer(df):
     # 24:00 = minuit de fin de journée, donc 00:00 du lendemain. Récupérable sans
     # rien inventer, contrairement au « 33q » de la latitude qu'on laisse en null.
     minuit_fin = pl.col("datetime").str.contains(" 24:")
-    conversions["datetime"] = (
-        pl.when(minuit_fin)
-        .then(
-            pl.col("datetime")
-            .str.replace(" 24:", " 00:")
-            .str.to_datetime("%m/%d/%Y %H:%M", strict=False)
-            .dt.offset_by("1d")
-        )
-        .otherwise(conversions["datetime"])
-    )
     print(f"\nRécupéré : {compte(minuit_fin)} heures 24:00 basculées au lendemain 00:00.")
 
     avant = df.height
-    df = df.with_columns(**conversions)
+    df = df.with_columns(**conversions_de_type())
     print(f"\nLignes : {avant} en entrée, {df.height} en sortie.")
     print("Type final de chaque champ :")
     for nom, type_final in df.schema.items():
@@ -378,7 +393,9 @@ def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
     blocs_train.append(csr_matrix(echelle.fit_transform(nums[i_train])))
     blocs_test.append(csr_matrix(echelle.transform(nums[i_test])))
 
-    modele = LogisticRegression(max_iter=2000, class_weight="balanced")
+    # liblinear plutôt que le solveur par défaut : même résultat, deux fois et demie
+    # plus rapide sur une matrice creuse de cette largeur.
+    modele = LogisticRegression(solver="liblinear", class_weight="balanced")
     modele.fit(hstack(blocs_train).tocsr(), y[i_train])
     X_test = hstack(blocs_test).tocsr()
     predit = modele.predict(X_test)
@@ -697,6 +714,112 @@ def phase8_ordre_du_temps(df, groupes, avant):
     return apres, (i_train, i_test, coupure)
 
 
+class Chaine:
+    """Toute la chaîne, du relevé brut à la réponse.
+
+    Rien ne s'apprend avant `apprendre` : le vocabulaire, la liste des catégories,
+    les médianes et les échelles sortent tous de la partie apprentissage seule. Un
+    relevé neuf entre par `repondre` et ressort avec un verdict, sans étape à
+    retaper à la main.
+    """
+
+    def __init__(self, colonne_texte="temoignage"):
+        self.colonne_texte = colonne_texte
+
+    def apprendre(self, df_brut, y):
+        df = preparer(df_brut)
+        self.tfidf = TfidfVectorizer(max_features=20000, min_df=2)
+        texte = self.tfidf.fit_transform(df[self.colonne_texte].to_list())
+
+        self.encodeur = OneHotEncoder(handle_unknown="ignore", min_frequency=20)
+        categories = self.encodeur.fit_transform(self._categories(df))
+
+        nombres = self._nombres(df)
+        self.mediane = np.nanmedian(nombres, axis=0)
+        self.echelle = StandardScaler()
+        echelonnes = self.echelle.fit_transform(self._boucher(nombres))
+
+        self.modele = LogisticRegression(solver="liblinear", class_weight="balanced")
+        self.modele.fit(
+            hstack([texte, categories, csr_matrix(echelonnes)]).tocsr(), y
+        )
+        return self
+
+    def _categories(self, df):
+        return df.select(COLS_CAT).fill_null("").to_numpy()
+
+    def _nombres(self, df):
+        return df.select(COLS_NUM + COLS_STYLE + COLS_MANQUE).to_numpy().astype(float)
+
+    def _boucher(self, nombres):
+        return np.where(np.isnan(nombres), self.mediane, nombres)
+
+    def _transformer(self, df_brut):
+        df = preparer(df_brut)
+        return hstack(
+            [
+                self.tfidf.transform(df[self.colonne_texte].to_list()),
+                self.encodeur.transform(self._categories(df)),
+                csr_matrix(self.echelle.transform(self._boucher(self._nombres(df)))),
+            ]
+        ).tocsr()
+
+    def repondre(self, df_brut):
+        """Un relevé brut entre, un verdict sort."""
+        X = self._transformer(df_brut)
+        return self.modele.predict(X), self.modele.decision_function(X)
+
+
+RELEVE_INVENTE = {
+    "datetime": "6/15/2015 23:30",
+    "city": "nulle part",
+    "state": "tx",
+    "country": "us",
+    "shape": "triangle",
+    "duration_seconds": "300",
+    "duration_hours_min": "5 minutes",
+    "comments": "Three silent lights in a triangle formation moving slowly north.",
+    "date_posted": "6/20/2015",
+    "latitude": "31.9686",
+    "longitude": "-99.9018",
+}
+
+
+def phase10_chaine_de_traitement(df_brut, decoupe, avant):
+    """Rien d'appris avant la découpe, et un relevé neuf traverse tout d'un coup."""
+    titre(10, "la chaîne de traitement du Bureau")
+
+    i_train, i_test = decoupe
+    y = df_brut["canular"].to_numpy().astype(int)
+    print("Proportion de canulars dans chaque partie :")
+    print(f"  apprentissage : {y[i_train].mean():.2%} sur {len(i_train)} relevés")
+    print(f"  test          : {y[i_test].mean():.2%} sur {len(i_test)} relevés")
+
+    chaine = Chaine().apprendre(df_brut[i_train.tolist()], y[i_train])
+    predit, _ = chaine.repondre(df_brut[i_test.tolist()])
+
+    print("\nUn relevé inventé à la main traverse la chaîne :")
+    for champ, valeur in list(RELEVE_INVENTE.items())[:4]:
+        print(f"  {champ:<18} {valeur}")
+    print("  …")
+    verdict, score = chaine.repondre(pl.DataFrame([RELEVE_INVENTE]))
+    print(f"  → verdict : {'CANULAR' if verdict[0] else 'pas un canular'} "
+          f"(score {score[0]:+.2f})")
+
+    apres = {
+        "rappel": recall_score(y[i_test], predit),
+        "precision": precision_score(y[i_test], predit, zero_division=0),
+        "auc": roc_auc_score(y[i_test], chaine.repondre(df_brut[i_test.tolist()])[1]),
+    }
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+    return apres, chaine
+
+
 def phase9_cases_vides(df, decoupe, avant):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -730,8 +853,8 @@ def phase9_cases_vides(df, decoupe, avant):
 
 def main():
     recuperer_la_transmission()
-    df = phase1_ouvrir_la_caisse()
-    df = phase2_typer(df)
+    brut = phase1_ouvrir_la_caisse()
+    df = phase2_typer(brut)
     df = phase3_etiqueter_les_canulars(df)
     df = ajouter_temoignage(ajouter_delai(df))
     avant = phase4_premier_verdict(df)
@@ -739,7 +862,10 @@ def main():
     phase6_modele_du_stagiaire(honnete, meilleur)
     par_evenement, groupes = phase7_un_seul_evenement(df, honnete)
     dans_le_temps, (i_train, i_test, _) = phase8_ordre_du_temps(df, groupes, par_evenement)
-    phase9_cases_vides(df, (i_train, i_test), dans_le_temps)
+    sans_trous, _ = phase9_cases_vides(df, (i_train, i_test), dans_le_temps)
+    phase10_chaine_de_traitement(
+        brut.with_columns(canular=df["canular"]), (i_train, i_test), sans_trous
+    )
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 
