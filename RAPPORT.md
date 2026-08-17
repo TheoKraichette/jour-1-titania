@@ -89,9 +89,20 @@ canulars.
 
 ## Phase 4 — Le premier verdict
 
-- Sur 100 canulars réellement présents, le système en attrape : `…`
-- Sur 100 relevés signalés, sont vraiment des canulars : `…`
-- Ces nombres sont calculés sur : *(quels relevés, jamais vus à l'entraînement)*
+- Sur 100 canulars réellement présents, le système en attrape : **100**
+- Sur 100 relevés signalés, sont vraiment des canulars : **96**
+
+Ces deux nombres sont calculés sur un quart des relevés, soit **22 170 lignes dont 218
+canulars**, mises de côté avant l'entraînement et que le modèle n'a jamais vues. Le tirage
+est aléatoire mais stratifié, pour garder la même proportion de canulars des deux côtés, et
+la graine est fixée à 0 pour que le découpage soit toujours le même.
+
+Le modèle est une régression logistique. Il reçoit le témoignage entier découpé en mots, la
+forme et le pays, la durée, les coordonnées, et le nombre de jours entre l'observation et sa
+publication.
+
+Attraper 100 canulars sur 100, ça ne ressemble pas à un vrai résultat. Je regarde d'où ça
+vient à la phase suivante.
 
 ## Phase 5 — Le Conseil ne vous croit pas
 

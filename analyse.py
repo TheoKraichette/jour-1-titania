@@ -12,7 +12,14 @@ import urllib.request
 from collections import Counter
 
 import matplotlib
+import numpy as np
 import polars as pl
+from scipy.sparse import csr_matrix, hstack
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -247,11 +254,76 @@ def phase3_etiqueter_les_canulars(df):
     return df
 
 
+COLS_CAT = ["shape", "country"]
+COLS_NUM = ["duration_seconds", "latitude", "longitude"]
+GRAINE = 0
+
+
+def ajouter_delai(df):
+    """Jours entre l'observation et la publication du signalement par le Bureau."""
+    return df.with_columns(
+        delai_jours=(
+            pl.col("date_posted").cast(pl.Datetime) - pl.col("datetime")
+        ).dt.total_days()
+    )
+
+
+def entrainer(df, avec_comments, avec_delai):
+    """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance."""
+    y = df["canular"].to_numpy().astype(int)
+    i_train, i_test = train_test_split(
+        np.arange(len(y)), test_size=0.25, stratify=y, random_state=GRAINE
+    )
+
+    blocs_train, blocs_test = [], []
+
+    if avec_comments:
+        tfidf = TfidfVectorizer(max_features=20000, min_df=2)
+        textes = df["comments"].to_list()
+        blocs_train.append(tfidf.fit_transform([textes[i] for i in i_train]))
+        blocs_test.append(tfidf.transform([textes[i] for i in i_test]))
+
+    cats = df.select(COLS_CAT).fill_null("").to_numpy()
+    encodeur = OneHotEncoder(handle_unknown="ignore")
+    blocs_train.append(encodeur.fit_transform(cats[i_train]))
+    blocs_test.append(encodeur.transform(cats[i_test]))
+
+    colonnes = COLS_NUM + (["delai_jours"] if avec_delai else [])
+    nums = df.select(colonnes).to_numpy().astype(float)
+    mediane = np.nanmedian(nums[i_train], axis=0)
+    nums = np.where(np.isnan(nums), mediane, nums)
+    echelle = StandardScaler()
+    blocs_train.append(csr_matrix(echelle.fit_transform(nums[i_train])))
+    blocs_test.append(csr_matrix(echelle.transform(nums[i_test])))
+
+    modele = LogisticRegression(max_iter=1000, class_weight="balanced")
+    modele.fit(hstack(blocs_train).tocsr(), y[i_train])
+    predit = modele.predict(hstack(blocs_test).tocsr())
+
+    return {
+        "rappel": recall_score(y[i_test], predit),
+        "precision": precision_score(y[i_test], predit, zero_division=0),
+        "exactitude": accuracy_score(y[i_test], predit),
+        "n_test": len(i_test),
+        "canulars_test": int(y[i_test].sum()),
+        "y_test": y[i_test],
+    }
+
+
 def phase4_premier_verdict(df):
     """Un modèle, évalué sur des relevés jamais vus : rappel et précision."""
     titre(4, "le premier verdict")
-    # TODO
-    return None
+
+    resultat = entrainer(df, avec_comments=True, avec_delai=True)
+    print(
+        f"Test sur {resultat['n_test']} relevés jamais vus à l'entraînement, "
+        f"dont {resultat['canulars_test']} canulars."
+    )
+    print(f"Sur 100 canulars réels, le système en attrape        : "
+          f"{resultat['rappel'] * 100:.0f}")
+    print(f"Sur 100 relevés signalés, en sont vraiment           : "
+          f"{resultat['precision'] * 100:.0f}")
+    return resultat
 
 
 def phase5_fuite_temporelle(df):
@@ -273,6 +345,7 @@ def main():
     df = phase1_ouvrir_la_caisse()
     df = phase2_typer(df)
     df = phase3_etiqueter_les_canulars(df)
+    df = ajouter_delai(df)
     phase4_premier_verdict(df)
     phase5_fuite_temporelle(df)
     phase6_modele_du_stagiaire(df)
