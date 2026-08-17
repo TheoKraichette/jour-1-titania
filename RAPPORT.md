@@ -32,6 +32,12 @@ Je convertis sans rien supprimer : ce qui ne passe pas devient `null` et je le c
 
 Les six autres champs sont du texte et le restent.
 
+Les 1 220 heures `24:00` sont récupérables sans rien inventer : minuit de fin de journée,
+c'est 00:00 du lendemain. Je les bascule une fois le comptage fait, donc le tableau garde le
+chiffre de la conversion brute et la colonne finit quand même complète. Je ne fais pas pareil
+pour `33q.200088` : deviner ce que cachait le `q` serait inventer une coordonnée, je la laisse
+vide.
+
 | Anomalie | Compte | D'où ça vient |
 |---|---|---|
 | lettre au milieu d'une coordonnée | 1 | transmission |
@@ -106,18 +112,54 @@ vient à la phase suivante.
 
 ## Phase 5 — Le Conseil ne vous croit pas
 
-| Colonne | Qui écrit l'information | À quel moment | Cette personne savait-elle déjà s'il s'agissait d'un canular ? |
+| Ce que le modèle lit | Qui écrit l'information | À quel moment | Savait-elle déjà s'il s'agissait d'un canular ? |
 |---|---|---|---|
-|  |  |  |  |
+| `comments` : le témoignage | le témoin | au signalement | non |
+| `comments` : la note `((...))` | le Bureau | au traitement, des semaines après | **oui** |
+| `shape` | le témoin | au signalement | non |
+| `country` | le témoin | au signalement | non |
+| `state` | le témoin | au signalement | non |
+| `duration_seconds` | le témoin | au signalement | non |
+| `datetime` : heure, mois, année | le témoin | au signalement | non |
+| longueur et exclamations du récit | le témoin | au signalement | non |
+| `latitude` | le géocodage automatique | au traitement | non |
+| `longitude` | le géocodage automatique | au traitement | non |
+| `delai_jours` (`date_posted` − `datetime`) | le Bureau | à la publication | **oui** |
 
-Colonnes retirées du modèle :
+`comments` compte pour deux lignes parce que deux personnes y écrivent, à deux moments. Je
+retire la note du Bureau et le délai de publication, je garde le récit du témoin : lui est
+bien là quand le signalement arrive.
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés |  |  |
-| Sur 100 signalés, justes |  |  |
+| Sur 100 canulars, attrapés | 100 | 32 |
+| Sur 100 signalés, justes | 96 | 3 |
+| Relevés dénoncés sur 22 170 | 226 | 2 180 |
+| AUC (0,5 = tirage au sort) | 1,000 | 0,718 |
 
-Pourquoi le premier chiffre n'avait pas le droit d'exister (trois lignes) :
+Le premier chiffre n'avait pas le droit d'exister parce que la réponse à deviner était écrite
+dans le texte que je donnais à lire : le mot « hoax » de la note servait à la fois à
+fabriquer l'étiquette et à la retrouver. Le modèle ne prédisait rien, il recopiait une
+conclusion qu'un employé du Bureau avait tirée des semaines plus tôt. Devant un signalement
+qui vient d'arriver, cette note n'existe pas et la date de publication non plus : il ne reste
+que le récit du témoin, et y repérer un mensonge est autrement plus difficile.
+
+La troisième ligne dit tout : pour attraper ses canulars, le modèle honnête en dénonce 2 180
+là où le premier en dénonçait 226.
+
+J'ai vérifié que le nettoyage tenait. Plus aucun relevé étiqueté canular ne contient de
+marqueur, et les mots que le modèle juge les plus révélateurs sont devenus du vocabulaire
+banal (`alleged`, `claim`, `wonderful`) au lieu de `hoax`. J'ai aussi dû jeter une variable
+que j'avais ajoutée : la proportion de majuscules. Calculée sur `comments`, elle valait 2,1
+fois plus chez les canulars — parce que `((HOAX??))` est en capitales. C'était encore la note
+du Bureau qui rentrait, déguisée en statistique.
+
+Enfin, pour savoir si ce plancher venait de l'information manquante ou de mon choix de
+modèle, j'ai construit le meilleur système que je pouvais sans jamais lire le Bureau : un
+gradient boosting, avec le témoignage résumé en 120 dimensions. Il monte à **59 attrapés sur
+100 et 4 justes sur 100**, AUC 0,813. C'est bien mieux que ma régression logistique, donc une
+partie du plancher venait bien du modèle — mais il dénonce quand même 3 279 relevés pour en
+trouver 128 vrais. L'écart avec la phase 4 ne se referme pas.
 
 ## Phase 6 — Le modèle le plus bête du Bureau
 

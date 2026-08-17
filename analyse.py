@@ -15,9 +15,12 @@ import matplotlib
 import numpy as np
 import polars as pl
 from scipy.sparse import csr_matrix, hstack
+from sklearn.decomposition import TruncatedSVD
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import (accuracy_score, precision_score, recall_score,
+                             roc_auc_score)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -173,6 +176,7 @@ def phase2_typer(df):
         fautives = brut.filter(resiste).unique().head(4).to_list()
         print(f"{col:<18} {vide.sum():>6} {resiste.sum():>10}   {fautives}")
 
+    compte = lambda expr: int(df.select(expr).to_series().sum())  # noqa: E731
     duree = df["duration_seconds"]
     natures = {
         "lettre parasite dans latitude": df["latitude"].str.contains("[A-Za-z]"),
@@ -189,6 +193,21 @@ def phase2_typer(df):
     print("\nAnomalies par nature :")
     for nom, masque in natures.items():
         print(f"  {nom:<40} {masque.sum():>6}")
+
+    # 24:00 = minuit de fin de journée, donc 00:00 du lendemain. Récupérable sans
+    # rien inventer, contrairement au « 33q » de la latitude qu'on laisse en null.
+    minuit_fin = pl.col("datetime").str.contains(" 24:")
+    conversions["datetime"] = (
+        pl.when(minuit_fin)
+        .then(
+            pl.col("datetime")
+            .str.replace(" 24:", " 00:")
+            .str.to_datetime("%m/%d/%Y %H:%M", strict=False)
+            .dt.offset_by("1d")
+        )
+        .otherwise(conversions["datetime"])
+    )
+    print(f"\nRécupéré : {compte(minuit_fin)} heures 24:00 basculées au lendemain 00:00.")
 
     avant = df.height
     df = df.with_columns(**conversions)
@@ -254,9 +273,15 @@ def phase3_etiqueter_les_canulars(df):
     return df
 
 
-COLS_CAT = ["shape", "country"]
-COLS_NUM = ["duration_seconds", "latitude", "longitude"]
+COLS_CAT = ["shape", "country", "state"]
+COLS_NUM = ["duration_seconds", "latitude", "longitude", "heure", "mois", "annee"]
+# Dérivées du récit lui-même, pas de son contenu : longueur et emportement.
+COLS_STYLE = ["longueur", "exclamations"]
 GRAINE = 0
+
+
+# Les notes du Bureau, y compris celles qui ne sont pas refermées proprement.
+NOTE_DU_BUREAU = r"\(\(.*?\)+|\(\(.*$"
 
 
 def ajouter_delai(df):
@@ -268,8 +293,27 @@ def ajouter_delai(df):
     )
 
 
-def entrainer(df, avec_comments, avec_delai):
-    """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance."""
+def ajouter_temoignage(df):
+    """Sépare ce que le témoin a raconté de ce que le Bureau a ajouté après coup."""
+    df = df.with_columns(
+        temoignage=pl.col("comments").str.replace_all(NOTE_DU_BUREAU, "")
+    )
+    # Tout se calcule sur le témoignage seul : mesurer les majuscules ou la longueur
+    # sur `comments` ferait rentrer la note du Bureau par la fenêtre.
+    return df.with_columns(
+        heure=pl.col("datetime").dt.hour(),
+        mois=pl.col("datetime").dt.month(),
+        annee=pl.col("datetime").dt.year(),
+        longueur=pl.col("temoignage").str.len_chars(),
+        exclamations=pl.col("temoignage").str.count_matches("&#33"),
+    )
+
+
+def entrainer(df, texte, avec_delai):
+    """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance.
+
+    `texte` désigne la colonne de texte donnée au modèle, ou None pour n'en donner aucune.
+    """
     y = df["canular"].to_numpy().astype(int)
     i_train, i_test = train_test_split(
         np.arange(len(y)), test_size=0.25, stratify=y, random_state=GRAINE
@@ -277,18 +321,18 @@ def entrainer(df, avec_comments, avec_delai):
 
     blocs_train, blocs_test = [], []
 
-    if avec_comments:
+    if texte:
         tfidf = TfidfVectorizer(max_features=20000, min_df=2)
-        textes = df["comments"].to_list()
+        textes = df[texte].to_list()
         blocs_train.append(tfidf.fit_transform([textes[i] for i in i_train]))
         blocs_test.append(tfidf.transform([textes[i] for i in i_test]))
 
     cats = df.select(COLS_CAT).fill_null("").to_numpy()
-    encodeur = OneHotEncoder(handle_unknown="ignore")
+    encodeur = OneHotEncoder(handle_unknown="ignore", min_frequency=20)
     blocs_train.append(encodeur.fit_transform(cats[i_train]))
     blocs_test.append(encodeur.transform(cats[i_test]))
 
-    colonnes = COLS_NUM + (["delai_jours"] if avec_delai else [])
+    colonnes = COLS_NUM + COLS_STYLE + (["delai_jours"] if avec_delai else [])
     nums = df.select(colonnes).to_numpy().astype(float)
     mediane = np.nanmedian(nums[i_train], axis=0)
     nums = np.where(np.isnan(nums), mediane, nums)
@@ -296,16 +340,19 @@ def entrainer(df, avec_comments, avec_delai):
     blocs_train.append(csr_matrix(echelle.fit_transform(nums[i_train])))
     blocs_test.append(csr_matrix(echelle.transform(nums[i_test])))
 
-    modele = LogisticRegression(max_iter=1000, class_weight="balanced")
+    modele = LogisticRegression(max_iter=2000, class_weight="balanced")
     modele.fit(hstack(blocs_train).tocsr(), y[i_train])
-    predit = modele.predict(hstack(blocs_test).tocsr())
+    X_test = hstack(blocs_test).tocsr()
+    predit = modele.predict(X_test)
 
     return {
         "rappel": recall_score(y[i_test], predit),
         "precision": precision_score(y[i_test], predit, zero_division=0),
         "exactitude": accuracy_score(y[i_test], predit),
+        "auc": roc_auc_score(y[i_test], modele.decision_function(X_test)),
         "n_test": len(i_test),
         "canulars_test": int(y[i_test].sum()),
+        "signalements": int(predit.sum()),
         "y_test": y[i_test],
     }
 
@@ -314,7 +361,7 @@ def phase4_premier_verdict(df):
     """Un modèle, évalué sur des relevés jamais vus : rappel et précision."""
     titre(4, "le premier verdict")
 
-    resultat = entrainer(df, avec_comments=True, avec_delai=True)
+    resultat = entrainer(df, texte="comments", avec_delai=True)
     print(
         f"Test sur {resultat['n_test']} relevés jamais vus à l'entraînement, "
         f"dont {resultat['canulars_test']} canulars."
@@ -326,11 +373,90 @@ def phase4_premier_verdict(df):
     return resultat
 
 
-def phase5_fuite_temporelle(df):
+# Une ligne par colonne donnée au modèle. La dernière case est celle qui tranche :
+# si la personne qui remplit le champ savait déjà, la colonne sort.
+PROVENANCE = [
+    ("comments : le témoignage", "témoin", "au signalement", False),
+    ("comments : la note ((...))", "Bureau", "au traitement", True),
+    ("shape", "témoin", "au signalement", False),
+    ("country", "témoin", "au signalement", False),
+    ("state", "témoin", "au signalement", False),
+    ("duration_seconds", "témoin", "au signalement", False),
+    ("datetime : heure, mois, année", "témoin", "au signalement", False),
+    ("longueur et exclamations du récit", "témoin", "au signalement", False),
+    ("latitude", "géocodage automatique", "au traitement", False),
+    ("longitude", "géocodage automatique", "au traitement", False),
+    ("delai_jours", "Bureau (date_posted)", "à la publication", True),
+]
+
+
+def phase5_fuite_temporelle(df, avant):
     """Retirer les colonnes remplies après coup, réentraîner, comparer."""
     titre(5, "le Conseil ne vous croit pas")
-    # TODO : tableau qui écrit quoi et quand, puis les deux nombres avant / après.
-    return None
+
+    print(f"{'ce que le modèle lit':<34} {'qui écrit':<22} {'à quel moment':<16} savait ?")
+    for colonne, qui, quand, savait in PROVENANCE:
+        print(f"{colonne:<34} {qui:<22} {quand:<16} {'OUI' if savait else 'non'}")
+
+    sortent = [colonne for colonne, _, _, savait in PROVENANCE if savait]
+    print(f"\nSortent du modèle : {', '.join(sortent)}")
+
+    apres = entrainer(df, texte="temoignage", avec_delai=False)
+
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'relevés dénoncés sur ' + str(apres['n_test']):<38}"
+          f"{avant['signalements']:>8}{apres['signalements']:>8}")
+    print(f"{'AUC (0.5 = hasard)':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+
+    meilleur = meilleur_modele_honnete(df)
+    print("\nMeilleur modèle honnête atteint (gradient boosting, témoignage résumé) :")
+    print(f"  attrapés {meilleur['rappel'] * 100:.0f} / 100, "
+          f"justes {meilleur['precision'] * 100:.0f} / 100, "
+          f"{meilleur['signalements']} dénoncés, AUC {meilleur['auc']:.3f}")
+
+    return apres
+
+
+def meilleur_modele_honnete(df):
+    """Le meilleur qu'on obtienne sans jamais lire ce que le Bureau a écrit.
+
+    Gradient boosting, qui attrape les effets non linéaires que la régression
+    logistique manque, et témoignage résumé en 120 dimensions.
+    """
+    y = df["canular"].to_numpy().astype(int)
+    i_train, i_test = train_test_split(
+        np.arange(len(y)), test_size=0.25, stratify=y, random_state=GRAINE
+    )
+    encodeur = OneHotEncoder(
+        handle_unknown="ignore", min_frequency=20, sparse_output=False
+    )
+    cats = df.select(COLS_CAT).fill_null("").to_numpy()
+    nums = df.select(COLS_NUM + COLS_STYLE).to_numpy().astype(float)
+
+    tfidf = TfidfVectorizer(max_features=20000, min_df=2)
+    textes = df["temoignage"].to_list()
+    resume = TruncatedSVD(n_components=120, random_state=GRAINE)
+    texte_train = resume.fit_transform(tfidf.fit_transform([textes[i] for i in i_train]))
+    texte_test = resume.transform(tfidf.transform([textes[i] for i in i_test]))
+
+    modele = HistGradientBoostingClassifier(class_weight="balanced", random_state=GRAINE)
+    modele.fit(
+        np.hstack([encodeur.fit_transform(cats[i_train]), nums[i_train], texte_train]),
+        y[i_train],
+    )
+    X_test = np.hstack([encodeur.transform(cats[i_test]), nums[i_test], texte_test])
+    predit = modele.predict(X_test)
+
+    return {
+        "rappel": recall_score(y[i_test], predit),
+        "precision": precision_score(y[i_test], predit, zero_division=0),
+        "auc": roc_auc_score(y[i_test], modele.predict_proba(X_test)[:, 1]),
+        "signalements": int(predit.sum()),
+    }
 
 
 def phase6_modele_du_stagiaire(df):
@@ -345,9 +471,9 @@ def main():
     df = phase1_ouvrir_la_caisse()
     df = phase2_typer(df)
     df = phase3_etiqueter_les_canulars(df)
-    df = ajouter_delai(df)
-    phase4_premier_verdict(df)
-    phase5_fuite_temporelle(df)
+    df = ajouter_temoignage(ajouter_delai(df))
+    avant = phase4_premier_verdict(df)
+    phase5_fuite_temporelle(df, avant)
     phase6_modele_du_stagiaire(df)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
