@@ -290,6 +290,12 @@ def phase3_etiqueter_les_canulars(df):
 
 COLS_CAT = ["shape", "country", "state"]
 COLS_NUM = ["duration_seconds", "latitude", "longitude", "heure", "mois", "annee"]
+# Ce que la phase 12 ajoute : la ville, et l'heure posée sur un cercle.
+COLS_CAT_FINAL = COLS_CAT + ["city"]
+COLS_NUM_FINAL = [c for c in COLS_NUM if c != "heure"] + ["heure_sin", "heure_cos"]
+# Deux orthographes pour la même forme. Règle fixe, rien d'appris ici.
+FORMES_SYNONYMES = {"changed": "changing", "round": "circle"}
+VILLE_RARE = 20
 # Dérivées du récit lui-même, pas de son contenu : longueur et emportement.
 COLS_STYLE = ["longueur", "exclamations"]
 GRAINE = 0
@@ -315,12 +321,19 @@ def ajouter_temoignage(df):
     )
     # Tout se calcule sur le témoignage seul : mesurer les majuscules ou la longueur
     # sur `comments` ferait rentrer la note du Bureau par la fenêtre.
+    # L'heure tourne en rond : 23 h et 0 h sont voisines, pas aux deux bouts d'une
+    # règle graduée. Deux coordonnées sur un cercle le disent, un entier ne le dit pas.
+    angle = pl.col("datetime").dt.hour() * (2 * np.pi / 24)
     return df.with_columns(
         heure=pl.col("datetime").dt.hour(),
+        heure_sin=angle.sin(),
+        heure_cos=angle.cos(),
         mois=pl.col("datetime").dt.month(),
         annee=pl.col("datetime").dt.year(),
         longueur=pl.col("temoignage").str.len_chars(),
         exclamations=pl.col("temoignage").str.count_matches("&#33"),
+        shape=pl.col("shape").fill_null("").str.to_lowercase().str.strip_chars()
+        .replace(FORMES_SYNONYMES),
     )
 
 
@@ -835,15 +848,19 @@ class Chaine:
     retaper à la main.
     """
 
-    def __init__(self, colonne_texte="temoignage"):
+    def __init__(self, colonne_texte="temoignage", cols_cat=None, cols_num=None):
         self.colonne_texte = colonne_texte
+        self.cols_cat = cols_cat or COLS_CAT
+        self.cols_num = cols_num or COLS_NUM
 
     def apprendre(self, df_brut, y):
         df = preparer(df_brut)
         self.tfidf = TfidfVectorizer(max_features=20000, min_df=2)
         texte = self.tfidf.fit_transform(df[self.colonne_texte].to_list())
 
-        self.encodeur = OneHotEncoder(handle_unknown="ignore", min_frequency=20)
+        self.encodeur = OneHotEncoder(
+            handle_unknown="ignore", min_frequency=VILLE_RARE
+        )
         categories = self.encodeur.fit_transform(self._categories(df))
 
         nombres = self._nombres(df)
@@ -858,10 +875,12 @@ class Chaine:
         return self
 
     def _categories(self, df):
-        return df.select(COLS_CAT).fill_null("").to_numpy()
+        return df.select(self.cols_cat).fill_null("").to_numpy()
 
     def _nombres(self, df):
-        return df.select(COLS_NUM + COLS_STYLE + COLS_MANQUE).to_numpy().astype(float)
+        return (
+            df.select(self.cols_num + COLS_STYLE + COLS_MANQUE).to_numpy().astype(float)
+        )
 
     def _boucher(self, nombres):
         return np.where(np.isnan(nombres), self.mediane, nombres)
@@ -932,6 +951,69 @@ def phase10_chaine_de_traitement(df_brut, decoupe, avant):
     return apres, chaine
 
 
+def distance_horaire(a, b):
+    """Distance entre deux heures une fois placées sur le cercle des 24 h."""
+    angle = lambda h: h * 2 * np.pi / 24  # noqa: E731
+    return float(
+        np.hypot(np.sin(angle(a)) - np.sin(angle(b)), np.cos(angle(a)) - np.cos(angle(b)))
+    )
+
+
+def phase12_ville_et_heure(df_brut, decoupe, avant):
+    """Deux informations riches, deux façons de se planter."""
+    titre(12, "la ville et l'heure")
+
+    i_train, i_test = decoupe
+    y = df_brut["canular"].to_numpy().astype(int)
+
+    villes = df_brut["city"].value_counts(sort=True)
+    print(f"Villes distinctes                          : {villes.height}")
+    print(f"Villes qui n'apparaissent qu'une seule fois : "
+          f"{villes.filter(pl.col('count') == 1).height}")
+    print(f"\nRègle : je garde les villes vues au moins {VILLE_RARE} fois dans la partie")
+    print("apprentissage, et je verse toutes les autres dans un même sac « ville rare ».")
+
+    print(f"\nL'heure sur un cercle plutôt que sur une règle graduée :")
+    print(f"  distance entre 23 h et 0 h  : {distance_horaire(23, 0):.3f}")
+    print(f"  distance entre 23 h et 20 h : {distance_horaire(23, 20):.3f}")
+
+    formes = preparer(df_brut)["shape"].n_unique()
+    print(f"\nFormes après avoir fondu « changed » dans « changing » et « round »")
+    print(f"dans « circle » : {formes}, dont les plus rares seront regroupées ensuite.")
+
+    chaine = Chaine(
+        cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL
+    ).apprendre(df_brut[i_train.tolist()], y[i_train])
+    rang_ville = COLS_CAT_FINAL.index("city")
+    noms = chaine.encodeur.get_feature_names_out()
+    colonnes_ville = sum(1 for n in noms if n.startswith(f"x{rang_ville}_"))
+    largeur = chaine._transformer(df_brut[:1]).shape[1]
+    villes_train = df_brut[i_train.tolist()]["city"].n_unique()
+
+    print(f"\nLargeur du tableau donné au modèle :")
+    print(f"  sans la ville                        : {largeur - colonnes_ville:>6}")
+    print(f"  avec une colonne par ville (naïf)    : "
+          f"{largeur - colonnes_ville + villes_train:>6}")
+    print(f"  avec la règle                        : {largeur:>6}"
+          f"   ({colonnes_ville} colonnes de ville)")
+
+    predit, scores = chaine.repondre(df_brut[i_test.tolist()])
+    apres = {
+        "rappel": recall_score(y[i_test], predit),
+        "precision": precision_score(y[i_test], predit, zero_division=0),
+        "auc": roc_auc_score(y[i_test], scores),
+    }
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+    print("\nAucun de mes encodages ne se sert de la cible : ce sont des comptages de")
+    print("fréquence, appris sur la partie apprentissage seule, jamais sur le test.")
+    return apres
+
+
 def phase9_cases_vides(df, decoupe, avant):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -975,10 +1057,12 @@ def main():
     par_evenement, groupes = phase7_un_seul_evenement(df, honnete)
     dans_le_temps, (i_train, i_test, _) = phase8_ordre_du_temps(df, groupes, par_evenement)
     sans_trous, _ = phase9_cases_vides(df, (i_train, i_test), dans_le_temps)
-    phase10_chaine_de_traitement(
-        brut.with_columns(canular=df["canular"]), (i_train, i_test), sans_trous
+    avec_etiquette = brut.with_columns(canular=df["canular"])
+    en_chaine, _ = phase10_chaine_de_traitement(
+        avec_etiquette, (i_train, i_test), sans_trous
     )
     phase11_duree(df)
+    phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

@@ -365,3 +365,69 @@ témoignage         : Collection of orbs, rods and discs sighted in Virginia.
 ```
 
 88 679 lignes en entrée, 88 679 en sortie.
+
+## Phase 12 — La ville et l'heure
+
+- Villes distinctes : **22 018**
+- Villes qui n'apparaissent **qu'une seule fois** : **14 177**, soit près des deux tiers
+
+**La règle :** je garde les villes vues au moins 20 fois dans la partie apprentissage, et je
+verse toutes les autres dans un même sac « ville rare ».
+
+| Tableau donné au modèle | Colonnes |
+|---|---|
+| sans la ville | 13 149 |
+| avec une colonne par ville | **32 104** |
+| avec la règle | **13 651** (dont 502 de ville) |
+
+Une colonne par ville aurait ajouté 19 000 colonnes dont la plupart n'auraient contenu qu'un
+seul 1 — le modèle aurait appris par cœur des villes qu'il ne reverra jamais.
+
+Pour l'heure, je la pose sur un cercle : deux coordonnées, un sinus et un cosinus, au lieu
+d'un entier de 0 à 23.
+
+| Distance | Dans mon encodage |
+|---|---|
+| entre 23 h et 0 h | **0,261** |
+| entre 23 h et 20 h | **0,765** |
+
+23 h est donc bien trois fois plus proche de minuit que de 20 h, ce qui correspond au ciel.
+Sur une règle graduée, la première distance valait 23 et la seconde 3.
+
+Pour `shape` : j'ai fondu `changed` dans `changing` et `round` dans `circle`, deux paires qui
+désignent la même chose. Il reste **28 formes**, et celles vues moins de 20 fois dans
+l'apprentissage — `delta`, `crescent`, `pyramid`, `flare`, `hexagon`, `dome` — rejoignent le
+même sac que les villes rares.
+
+|  | Avant | Après |
+|---|---|---|
+| Sur 100 canulars, attrapés | 34 | 24 |
+| Sur 100 signalés, justes | 2 | 1 |
+| AUC | 0,620 | 0,616 |
+
+Le résultat baisse, et je ne vais pas prétendre le contraire. La ville n'apporte rien parce
+que le modèle dispose déjà de la latitude et de la longitude, qui portent la même information
+géographique en deux colonnes au lieu de cinq cents. J'ai essayé des seuils plus sévères
+(50, 100, 200) : aucun ne fait mieux. L'heure circulaire, elle, ne change presque rien à
+l'AUC, mais elle corrige une absurdité — mon modèle croyait minuit à vingt-trois heures de
+distance de 23 h. Je préfère un chiffre honnête sur un encodage juste qu'un chiffre flatteur
+sur un encodage faux.
+
+Aucun de mes encodages ne se sert de la cible : ce sont des comptages de fréquence, appris
+sur la partie apprentissage seule et jamais sur le test.
+
+## Ce qui a bougé, phase par phase
+
+| Phase | Ce que je corrige | Attrapés | Justes | AUC |
+|---|---|---|---|---|
+| 5-6 | modèle honnête, découpe au hasard | 32 | 3 | 0,718 |
+| 7 | un événement ne peut plus être coupé en deux | 30 | 3 | 0,721 |
+| 8 | apprendre sur le passé, être noté sur l'avenir | 34 | 2 | **0,616** |
+| 9 | les trous sont marqués au lieu d'être effacés | 34 | 2 | 0,620 |
+| 10 | rien n'est appris avant la découpe | 34 | 2 | 0,620 |
+| 12 | ville regroupée et heure circulaire | 24 | 1 | 0,616 |
+
+La seule correction qui fait vraiment mal est la phase 8. Les autres déplacent les chiffres
+de peu, parce que le gros de la triche avait déjà été retiré en phase 5 avec la note du
+Bureau. Passer de 0,72 à 0,62 en remettant les dossiers dans l'ordre du temps, c'est la
+mesure de ce que valait vraiment mon système : il ne prédisait pas l'avenir, il le relisait.
