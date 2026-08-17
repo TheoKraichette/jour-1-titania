@@ -5,8 +5,10 @@ Télécharge la transmission et rejoue les six phases d'une traite.
     python analyse.py
 """
 
+import csv
 import os
 import urllib.request
+from collections import Counter
 
 import polars as pl
 
@@ -45,12 +47,49 @@ def recuperer_la_transmission():
     print(f"Reçu : {os.path.getsize(CSV) / 1e6:.1f} Mo")
 
 
+def compter_lignes_physiques(chemin):
+    with open(chemin, "rb") as f:
+        return sum(bloc.count(b"\n") for bloc in iter(lambda: f.read(1 << 20), b""))
+
+
 def phase1_ouvrir_la_caisse():
     """Charger tout le fichier. Rendre : lignes du fichier, chargées, mises à part."""
     titre(1, "ouvrir la caisse")
-    # TODO : compter les lignes brutes, charger avec has_header=False et
-    # new_columns=COLONNES, récupérer les lignes rejetées au lieu de les perdre.
-    df = None
+
+    lignes_physiques = compter_lignes_physiques(CSV)
+
+    # Parcours manuel plutôt qu'un read_csv tolérant : on veut garder les lignes
+    # rejetées sous la main, pas les laisser disparaître.
+    conformes, rejets = [], []
+    with open(CSV, encoding="utf-8", errors="replace", newline="") as f:
+        for numero, champs in enumerate(csv.reader(f), start=1):
+            if len(champs) == len(COLONNES):
+                conformes.append(champs)
+            else:
+                rejets.append((numero, champs))
+
+    total = len(conformes) + len(rejets)
+    df = pl.DataFrame(
+        conformes, schema={col: pl.String for col in COLONNES}, orient="row"
+    )
+
+    print(f"Lignes physiques (\\n)      : {lignes_physiques}")
+    print(f"Enregistrements CSV        : {total}")
+    print(f"Chargés (11 champs)        : {df.height}")
+    print(f"Mis à part                 : {len(rejets)}")
+    print(f"Cohérence                  : {df.height} + {len(rejets)} = {total}")
+
+    if rejets:
+        print("\nCe qu'il y a dans les lignes mises à part :")
+        for nb_champs, combien in sorted(Counter(len(c) for _, c in rejets).items()):
+            print(f"  {combien} ligne(s) à {nb_champs} champs au lieu de {len(COLONNES)}")
+
+        numero, champs = rejets[0]
+        print(f"\nExemple, ligne {numero} ({len(champs)} champs) :")
+        for i, valeur in enumerate(champs):
+            nom = COLONNES[i] if i < len(COLONNES) else "— en trop —"
+            print(f"  [{i:2}] {nom:<19} {valeur[:60]}")
+
     return df
 
 
