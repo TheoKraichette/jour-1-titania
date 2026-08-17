@@ -1,0 +1,17 @@
+# Données : ~15 Mo, se retélécharge
+releves_klaxo3.csv
+*.csv
+
+figures/
+*.png
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,10 @@
+services:
+  # Exécution courante : le CSV téléchargé reste sur l'hôte.
+  analyse:
+    build: .
+    volumes:
+      - .:/app
+
+  # Conteneur vierge : vérifie que tout se refait seul.
+  machine-neuve:
+    build: .
