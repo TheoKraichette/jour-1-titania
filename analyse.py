@@ -365,7 +365,12 @@ def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
     blocs_train.append(encodeur.fit_transform(cats[i_train]))
     blocs_test.append(encodeur.transform(cats[i_test]))
 
-    colonnes = COLS_NUM + COLS_STYLE + (["delai_jours"] if avec_delai else [])
+    colonnes = (
+        COLS_NUM
+        + COLS_STYLE
+        + [c for c in COLS_MANQUE if c in df.columns]
+        + (["delai_jours"] if avec_delai else [])
+    )
     nums = df.select(colonnes).to_numpy().astype(float)
     mediane = np.nanmedian(nums[i_train], axis=0)
     nums = np.where(np.isnan(nums), mediane, nums)
@@ -494,6 +499,21 @@ def meilleur_modele_honnete(df):
         "signalements": int(predit.sum()),
         "attrapes": int(((predit == 1) & (y[i_test] == 1)).sum()),
     }
+
+
+COLS_TROUEES = ["country", "state", "duration_hours_min"]
+COLS_MANQUE = ["manque_country", "manque_state", "manque_duration_hours_min"]
+
+
+def est_vide(colonne):
+    return pl.col(colonne).fill_null("").str.strip_chars() == ""
+
+
+def ajouter_indicateurs(df):
+    """Marque les trous avant de les boucher : ce sont deux choses différentes."""
+    return df.with_columns(
+        **{f"manque_{col}": est_vide(col).cast(pl.Int8) for col in COLS_TROUEES}
+    )
 
 
 TAILLE_TEXTE_DISCRIMINANT = 80
@@ -677,6 +697,37 @@ def phase8_ordre_du_temps(df, groupes, avant):
     return apres, (i_train, i_test, coupure)
 
 
+def phase9_cases_vides(df, decoupe, avant):
+    """Mesurer ce que dit un trou avant de le boucher."""
+    titre(9, "les cases vides")
+
+    texte = ["city", "state", "country", "shape", "duration_hours_min", "comments"]
+    combien = {col: int(df.select(est_vide(col)).to_series().sum()) for col in texte}
+    trois = sorted(combien, key=combien.get, reverse=True)[:3]
+    print(f"Les trois colonnes les plus trouées : {', '.join(trois)}")
+
+    print(f"\n{'colonne':<20}{'vides':>8}{'canulars si vide':>19}{'si rempli':>12}")
+    for col in trois:
+        manque = df.select(est_vide(col)).to_series()
+        avec = df.filter(manque)["canular"].mean()
+        sans = df.filter(~manque)["canular"].mean()
+        print(f"{col:<20}{combien[col]:>8}{avec:>18.2%}{sans:>12.2%}")
+
+    df = ajouter_indicateurs(df)
+    print("\nTraitement : je garde les vides comme une catégorie à part entière et")
+    print("j'ajoute une colonne « cette case était vide » pour chacune des trois.")
+    print("Le trou est bouché, sa trace est conservée, le modèle peut encore s'en servir.")
+
+    apres = entrainer(df, texte="temoignage", avec_delai=False, decoupe=decoupe)
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+    return apres, df
+
+
 def main():
     recuperer_la_transmission()
     df = phase1_ouvrir_la_caisse()
@@ -687,7 +738,8 @@ def main():
     honnete, meilleur = phase5_fuite_temporelle(df, avant)
     phase6_modele_du_stagiaire(honnete, meilleur)
     par_evenement, groupes = phase7_un_seul_evenement(df, honnete)
-    phase8_ordre_du_temps(df, groupes, par_evenement)
+    dans_le_temps, (i_train, i_test, _) = phase8_ordre_du_temps(df, groupes, par_evenement)
+    phase9_cases_vides(df, (i_train, i_test), dans_le_temps)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

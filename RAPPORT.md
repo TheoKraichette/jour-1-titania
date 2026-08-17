@@ -255,3 +255,34 @@ Mon étiquette ne mesure donc pas la fréquence des canulars mais le rythme de t
 annotateurs, et ce rythme change dans le temps. C'est ce qui explique la chute de l'AUC de
 0,721 à 0,616 : le modèle a appris ce qu'était un canular pendant les années fastes de
 l'annotation, et on le note sur une période où le Bureau annotait deux fois moins.
+
+## Phase 9 — Les cases vides
+
+Les trois colonnes les plus trouées, et la proportion de canulars de chaque côté :
+
+| Colonne | Cases vides | Canulars si la case est vide | Canulars si elle est remplie |
+|---|---|---|---|
+| `country` | 12 365 | **1,21 %** | 0,95 % |
+| `state` | 7 409 | **1,35 %** | 0,95 % |
+| `duration_hours_min` | 3 017 | **2,42 %** | 0,93 % |
+
+Un trou n'est pas neutre : dans les trois cas, un relevé incomplet est plus souvent un
+canular. L'écart est net sur la durée écrite à la main, où l'on passe de 0,93 % à 2,42 %,
+soit deux fois et demie plus. Ça se comprend : quelqu'un qui invente une observation ne
+prend pas la peine de remplir les cases facultatives.
+
+Jeter ces lignes aurait supprimé 12 365 relevés dont la vacuité était justement un indice.
+Les remplir avec la valeur la plus fréquente aurait fait passer un dossier bâclé pour un
+dossier ordinaire.
+
+**Le traitement retenu :** je garde le vide comme une catégorie à part entière, et j'ajoute
+pour chacune des trois colonnes une variable qui vaut 1 quand la case était vide. Ça ne
+détruit pas ce que je viens de mesurer, parce que l'écart de proportion que montre le tableau
+est exactement ce que cette variable transporte : le modèle continue de savoir qu'il y avait
+un trou à cet endroit, même après que le trou a été bouché.
+
+|  | Avant | Après |
+|---|---|---|
+| Sur 100 canulars, attrapés | 34 | 34 |
+| Sur 100 signalés, justes | 2 | 2 |
+| AUC | 0,616 | 0,620 |
