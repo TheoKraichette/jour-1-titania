@@ -10,7 +10,11 @@ import os
 import urllib.request
 from collections import Counter
 
+import matplotlib
 import polars as pl
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
 
 URL = (
     "https://raw.githubusercontent.com/planetsig/ufo-reports/master/csv-data/"
@@ -93,12 +97,72 @@ def phase1_ouvrir_la_caisse():
     return df
 
 
+NUMERIQUES = ["duration_seconds", "latitude", "longitude"]
+
+
 def phase2_typer(df):
     """Chaque champ dans son vrai type, sans supprimer de ligne."""
     titre(2, "rien n'est du bon type")
-    # TODO : convertir, puis compter et montrer les valeurs qui ont résisté.
-    # Quatre anomalies de nature différente au minimum, avec leur origine.
+
+    conversions = {col: pl.col(col).cast(pl.Float64, strict=False) for col in NUMERIQUES}
+    conversions["datetime"] = pl.col("datetime").str.to_datetime(
+        "%m/%d/%Y %H:%M", strict=False
+    )
+    # date_posted n'a pas d'heure : une vraie date, pas un datetime à minuit.
+    conversions["date_posted"] = pl.col("date_posted").str.to_date(
+        "%m/%d/%Y", strict=False
+    )
+
+    print(f"{'champ':<18} {'vides':>6} {'résistent':>10}   valeurs fautives")
+    for col, expr in conversions.items():
+        brut = df[col]
+        converti = df.select(expr).to_series()
+        vide = brut.str.strip_chars() == ""
+        resiste = ~vide & converti.is_null()
+        fautives = brut.filter(resiste).unique().head(4).to_list()
+        print(f"{col:<18} {vide.sum():>6} {resiste.sum():>10}   {fautives}")
+
+    duree = df["duration_seconds"]
+    natures = {
+        "lettre parasite dans latitude": df["latitude"].str.contains("[A-Za-z]"),
+        "apostrophe inversée collée à la durée": duree.str.contains("`"),
+        "espaces autour de la durée": (duree != duree.str.strip_chars()) & (duree != ""),
+        "heure 24:00, qui n'existe pas": df["datetime"].str.contains(" 24:"),
+        "entités HTML dans le témoignage": df["comments"].str.contains("&#"),
+        "pays non renseigné": df["country"].str.strip_chars() == "",
+    }
+    # Celle-ci passe la conversion sans broncher : zéro est un nombre valide.
+    lat = df.select(conversions["latitude"]).to_series()
+    lon = df.select(conversions["longitude"]).to_series()
+    natures["coordonnées à (0, 0), géocodage raté"] = (lat == 0) & (lon == 0)
+    print("\nAnomalies par nature :")
+    for nom, masque in natures.items():
+        print(f"  {nom:<40} {masque.sum():>6}")
+
+    avant = df.height
+    df = df.with_columns(**conversions)
+    print(f"\nLignes : {avant} en entrée, {df.height} en sortie.")
+    print("Type final de chaque champ :")
+    for nom, type_final in df.schema.items():
+        print(f"  {nom:<20} {type_final}")
+
+    carte_des_observations(df)
     return df
+
+
+def carte_des_observations(df):
+    """La carte que le Conseil n'arrivait pas à tracer, une fois les types corrigés."""
+    points = df.select("latitude", "longitude").drop_nulls()
+    os.makedirs("figures", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(13, 6.5))
+    ax.scatter(points["longitude"], points["latitude"], s=1, alpha=0.15, linewidths=0)
+    ax.set_xlabel("longitude")
+    ax.set_ylabel("latitude")
+    ax.set_title(f"{points.height} observations situées")
+    fig.savefig("figures/carte.png", dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\nCarte : figures/carte.png ({points.height} points)")
 
 
 def phase3_etiqueter_les_canulars(df):
