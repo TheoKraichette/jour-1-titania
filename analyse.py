@@ -353,6 +353,7 @@ def entrainer(df, texte, avec_delai):
         "n_test": len(i_test),
         "canulars_test": int(y[i_test].sum()),
         "signalements": int(predit.sum()),
+        "attrapes": int(((predit == 1) & (y[i_test] == 1)).sum()),
         "y_test": y[i_test],
     }
 
@@ -418,7 +419,7 @@ def phase5_fuite_temporelle(df, avant):
           f"justes {meilleur['precision'] * 100:.0f} / 100, "
           f"{meilleur['signalements']} dénoncés, AUC {meilleur['auc']:.3f}")
 
-    return apres
+    return apres, meilleur
 
 
 def meilleur_modele_honnete(df):
@@ -454,16 +455,33 @@ def meilleur_modele_honnete(df):
     return {
         "rappel": recall_score(y[i_test], predit),
         "precision": precision_score(y[i_test], predit, zero_division=0),
+        "exactitude": accuracy_score(y[i_test], predit),
         "auc": roc_auc_score(y[i_test], modele.predict_proba(X_test)[:, 1]),
         "signalements": int(predit.sum()),
+        "attrapes": int(((predit == 1) & (y[i_test] == 1)).sum()),
     }
 
 
-def phase6_modele_du_stagiaire(df):
+def phase6_modele_du_stagiaire(honnete, meilleur):
     """Baseline « jamais un canular », à mettre en face du vrai modèle."""
     titre(6, "le modèle le plus bête du Bureau")
-    # TODO
-    return None
+
+    vrai = honnete["y_test"]
+    stagiaire = np.zeros_like(vrai)  # « ce n'est pas un canular », toujours
+    canulars = int(vrai.sum())
+
+    print("Système du stagiaire : répondre « ce n'est pas un canular », quoi qu'il arrive.")
+    print(f"\n{'':<34}{'bonnes réponses':>17}{'canulars attrapés':>20}")
+    for nom, exactitude, attrapes in (
+        ("le stagiaire", accuracy_score(vrai, stagiaire), 0),
+        ("mon modèle (régression)", honnete["exactitude"], honnete["attrapes"]),
+        ("mon meilleur modèle (boosting)", meilleur["exactitude"], meilleur["attrapes"]),
+    ):
+        print(f"{nom:<34}{exactitude:>16.2%}{f'{attrapes} / {canulars}':>20}")
+
+    print("\nLe stagiaire gagne sur les bonnes réponses parce que dire non à tout suffit")
+    print(f"quand seulement {vrai.mean():.2%} des relevés sont des canulars.")
+    print("La mesure à présenter au Conseil est donc le nombre de canulars attrapés.")
 
 
 def main():
@@ -473,8 +491,8 @@ def main():
     df = phase3_etiqueter_les_canulars(df)
     df = ajouter_temoignage(ajouter_delai(df))
     avant = phase4_premier_verdict(df)
-    phase5_fuite_temporelle(df, avant)
-    phase6_modele_du_stagiaire(df)
+    honnete, meilleur = phase5_fuite_temporelle(df, avant)
+    phase6_modele_du_stagiaire(honnete, meilleur)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

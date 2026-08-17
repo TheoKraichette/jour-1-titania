@@ -163,9 +163,26 @@ trouver 128 vrais. L'écart avec la phase 4 ne se referme pas.
 
 ## Phase 6 — Le modèle le plus bête du Bureau
 
-- Taux de bonnes réponses du stagiaire (« jamais un canular ») : `…`
-- Taux de bonnes réponses du vrai modèle : `…`
+Son système tient en une ligne : répondre « ce n'est pas un canular », toujours.
 
-La mesure présentée au Conseil, et pourquoi (trois lignes) :
+|  | Bonnes réponses | Canulars attrapés |
+|---|---|---|
+| Le stagiaire | **99,02 %** | 0 sur 218 |
+| Mon modèle (régression logistique) | 89,81 % | 69 sur 218 |
+| Mon meilleur modèle (gradient boosting) | 85,38 % | 128 sur 218 |
 
-Pourquoi le score du stagiaire ne prouve rien :
+Le classement s'inverse d'une colonne à l'autre : plus un système attrape de canulars, plus
+son taux de bonnes réponses baisse. C'est déjà tout le problème.
+
+**La mesure que je présente au Conseil : le nombre de canulars attrapés, mis en face du
+nombre de dossiers à relire.** Le Bureau veut arrêter de perdre du temps sur des signalements
+inventés, donc la seule question qui compte est combien on en retrouve, et à quel prix. Le
+stagiaire en retrouve zéro : son système ne fait gagner aucune minute à personne. Le mien en
+retrouve 128 sur 218 en faisant relire 3 279 dossiers au lieu de 22 170, soit 6 canulars sur
+10 pour 85 % de travail en moins.
+
+Pourquoi son 99 % ne prouve rien : ce score ne mesure pas sa capacité à trier, il mesure la
+rareté des canulars. Comme ils ne sont que 0,98 % du fichier, répondre non à tout donne
+99,02 % de bonnes réponses sans jamais regarder un seul dossier. Appliqué à un fichier où un
+relevé sur deux serait un canular, le même système tomberait à 50 %. Son score dépend du
+fichier qu'on lui donne, pas de ce qu'il fait.
