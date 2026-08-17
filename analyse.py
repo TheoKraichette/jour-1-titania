@@ -714,6 +714,118 @@ def phase8_ordre_du_temps(df, groupes, avant):
     return apres, (i_train, i_test, coupure)
 
 
+UNITES = {
+    "sec": 1.0, "min": 60.0, "hour": 3600.0, "hr": 3600.0,
+    "day": 86400.0, "week": 604800.0, "month": 2592000.0,
+}
+UN_JOUR = 86400
+
+
+MOTS_NOMBRES = {
+    "one": 1.0, "two": 2.0, "three": 3.0, "four": 4.0, "five": 5.0, "six": 6.0,
+    "seven": 7.0, "eight": 8.0, "nine": 9.0, "ten": 10.0, "fifteen": 15.0,
+    "twenty": 20.0, "thirty": 30.0, "forty": 40.0, "sixty": 60.0,
+    "half": 0.5, "couple": 2.0,
+}
+
+
+def duree_ecrite_par_le_temoin():
+    """Relit « 5 minutes », « 1-2 hrs », « one minute » : ce que le témoin a tapé."""
+    texte = pl.col("duration_hours_min").fill_null("").str.to_lowercase()
+    chiffres = (
+        texte.str.extract(r"(\d+(?:[.,]\d+)?)", 1)
+        .str.replace(",", ".")
+        .cast(pl.Float64, strict=False)
+    )
+    # « one minute », « five minutes » : le témoin écrit aussi les nombres en lettres.
+    en_lettres = texte.str.extract(
+        r"\b(" + "|".join(MOTS_NOMBRES) + r")\b", 1
+    ).replace_strict(MOTS_NOMBRES, default=None, return_dtype=pl.Float64)
+    nombre = pl.coalesce(chiffres, en_lettres)
+    unite = texte.str.extract(r"(seconds?|sec|minutes?|min|hours?|hour|hrs?|days?|weeks?|months?)", 1)
+    facteur = (
+        pl.when(unite.str.starts_with("sec")).then(pl.lit(1.0))
+        .when(unite.str.starts_with("min")).then(pl.lit(60.0))
+        .when(unite.str.starts_with("h")).then(pl.lit(3600.0))
+        .when(unite.str.starts_with("day")).then(pl.lit(86400.0))
+        .when(unite.str.starts_with("week")).then(pl.lit(604800.0))
+        .when(unite.str.starts_with("month")).then(pl.lit(2592000.0))
+        .otherwise(None)
+    )
+    return nombre * facteur
+
+
+def phase11_duree(df):
+    """Deux colonnes de durée qui ne sont pas d'accord : en tirer une seule, fiable."""
+    titre(11, "combien de temps ça a duré")
+    lignes_avant = df.height
+
+    df = df.with_columns(duree_ecrite=duree_ecrite_par_le_temoin())
+    # La colonne « propre » a été fabriquée à partir de la sale, et parfois ratée :
+    # quand elle annonce 0 ou rien, on retombe sur ce que le témoin avait écrit.
+    df = df.with_columns(
+        duree=pl.when(pl.col("duration_seconds") > 0)
+        .then(pl.col("duration_seconds"))
+        .otherwise(pl.col("duree_ecrite"))
+    )
+
+    lisibles_deux = pl.col("duration_seconds").is_not_null() & pl.col(
+        "duree_ecrite"
+    ).is_not_null() & (pl.col("duration_seconds") > 0)
+    ecart = (pl.col("duration_seconds") / pl.col("duree_ecrite")).abs()
+    contradiction = lisibles_deux & ((ecart > 2) | (ecart < 0.5))
+
+    perdue = (
+        (pl.col("duration_seconds").is_null() | (pl.col("duration_seconds") == 0))
+        & pl.col("duree_ecrite").is_not_null()
+    )
+    compte = lambda expr: int(df.select(expr).to_series().sum())  # noqa: E731
+
+    ecrite_vide = est_vide("duration_hours_min")
+    print(f"Durées écrites à la main relues avec succès : "
+          f"{compte(pl.col('duree_ecrite').is_not_null())} "
+          f"({compte(ecrite_vide)} cases vides, "
+          f"{compte(~ecrite_vide & pl.col('duree_ecrite').is_null())} illisibles)")
+    print(f"Relevés dont la durée reste inutilisable : {compte(pl.col('duree').is_null())}")
+    print(f"  (avant récupération du texte du témoin : "
+          f"{compte(pl.col('duration_seconds').is_null() | (pl.col('duration_seconds') == 0))})")
+    print(f"Relevés où les deux colonnes se contredisent : {compte(contradiction)}")
+    print(f"Durée médiane : {df['duree'].median():.0f} secondes")
+    print(f"Relevés annonçant plus d'une journée : {compte(pl.col('duree') > UN_JOUR)}")
+
+    print("\nDeux natures d'aberration :")
+    print(f"  durée perdue par la transmission (0 alors que le témoin avait écrit) : "
+          f"{compte(perdue)}")
+    print(f"  durée physiquement invraisemblable (plus d'une journée)              : "
+          f"{compte(pl.col('duree') > UN_JOUR)}")
+
+    print("\nLes trois durées les plus longues :")
+    plus_longues = df.sort("duree", descending=True, nulls_last=True).head(3)
+    for ligne in plus_longues.iter_rows(named=True):
+        jours = ligne["duree"] / UN_JOUR
+        print(f"  {ligne['duree']:>12.0f} s ({jours:>7.0f} jours)  "
+              f"écrit : « {(ligne['duration_hours_min'] or '')[:28]} »")
+    print("  Je les garde : ce sont des relevés valides par ailleurs, et les supprimer")
+    print("  changerait le nombre de lignes. Je marque simplement l'invraisemblance,")
+    print("  et le modèle lit le logarithme de la durée, insensible à ces extrêmes.")
+
+    exemple = df.filter(contradiction).sort("duree_ecrite", descending=True).head(1)
+    if exemple.height:
+        ligne = exemple.row(0, named=True)
+        print(f"\nUn relevé où les deux colonnes racontent deux histoires :")
+        print(f"  duration_seconds   : {ligne['duration_seconds']:.0f}")
+        print(f"  duration_hours_min : « {ligne['duration_hours_min']} » "
+              f"→ {ligne['duree_ecrite']:.0f} s")
+        print(f"  témoignage         : {(ligne['comments'] or '')[:70]}")
+
+    df = df.with_columns(
+        duree_log=(pl.col("duree").fill_null(0) + 1).log(),
+        duree_invraisemblable=(pl.col("duree") > UN_JOUR).cast(pl.Int8),
+    )
+    print(f"\nLignes : {lignes_avant} en entrée, {df.height} en sortie.")
+    return df
+
+
 class Chaine:
     """Toute la chaîne, du relevé brut à la réponse.
 
@@ -866,6 +978,7 @@ def main():
     phase10_chaine_de_traitement(
         brut.with_columns(canular=df["canular"]), (i_train, i_test), sans_trous
     )
+    phase11_duree(df)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

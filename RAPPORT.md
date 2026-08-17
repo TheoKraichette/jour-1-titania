@@ -318,3 +318,50 @@ médianes et mon vocabulaire sur la seule partie apprentissage, donc la faute qu
 cherchait n'était pas commise. Ce qui change n'est pas le résultat mais la garantie. Avant,
 il fallait me croire sur parole en relisant le code ; maintenant c'est la structure qui
 l'impose, puisque l'objet qui apprend ne voit jamais le test.
+
+## Phase 11 — Combien de temps ça a duré
+
+Le service de transmission a fabriqué la colonne en secondes à partir de ce que le témoin
+avait écrit, et il l'a parfois ratée. Je relis donc le texte d'origine — « 5 minutes »,
+« 1-2 hrs », « one minute » — et je m'en sers quand la colonne propre annonce 0 ou rien.
+
+- Durées reste inutilisables après traitement : **7 006** (7 033 avant récupération)
+- Relevés où les deux colonnes se contredisent : **1 508**
+- Durée médiane : **180 secondes**, soit trois minutes
+- Relevés annonçant plus d'une journée : **205**
+
+Deux natures d'aberration :
+
+| Aberration | Compte | D'où ça vient |
+|---|---|---|
+| durée perdue : 0 en secondes alors que le témoin avait écrit une durée lisible | 27 | transmission |
+| durée physiquement invraisemblable, plus d'une journée | 205 | témoin |
+
+Les 7 006 qui restent inutilisables ne sont pas un échec de lecture : ce sont des cases vides
+(3 017) ou des réponses qu'aucun traitement ne peut chiffrer — « unknown » (528), « ? » (177),
+« ongoing » (154), « all night ». Je ne leur invente pas de valeur.
+
+Les trois durées les plus longues :
+
+```
+97 836 000 s (1 132 jours)  écrit : « 31 years »
+82 800 000 s (  958 jours)  écrit : « 23000hrs »
+66 276 000 s (  767 jours)  écrit : « 21 years »
+```
+
+Je les garde. Ce sont des relevés valides par ailleurs, et les supprimer changerait le nombre
+de lignes, ce que l'étape m'interdit. Je marque simplement l'invraisemblance dans une colonne
+à part, et le modèle lit le logarithme de la durée plutôt que la durée elle-même, ce qui rend
+ces extrêmes inoffensifs. C'est aussi pour ça que je donne la médiane et pas la moyenne :
+trois relevés à trente ans suffiraient à déplacer une moyenne, ils ne déplacent pas la
+médiane d'une seconde.
+
+Un relevé où les deux colonnes racontent deux histoires différentes :
+
+```
+duration_seconds   : 2102400
+duration_hours_min : « >8 months » → 20736000 s
+témoignage         : Collection of orbs, rods and discs sighted in Virginia.
+```
+
+88 679 lignes en entrée, 88 679 en sortie.
