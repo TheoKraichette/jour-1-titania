@@ -21,7 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              roc_auc_score)
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 matplotlib.use("Agg")
@@ -309,15 +309,24 @@ def ajouter_temoignage(df):
     )
 
 
-def entrainer(df, texte, avec_delai):
+def decouper(y, groupes=None):
+    """Met un quart des relevés de côté. Avec `groupes`, aucun événement n'est coupé
+    en deux : tous ses témoins vont du même côté."""
+    if groupes is None:
+        return train_test_split(
+            np.arange(len(y)), test_size=0.25, stratify=y, random_state=GRAINE
+        )
+    decoupe = StratifiedGroupKFold(n_splits=4, shuffle=True, random_state=GRAINE)
+    return next(decoupe.split(np.zeros(len(y)), y, groupes))
+
+
+def entrainer(df, texte, avec_delai, groupes=None):
     """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance.
 
     `texte` désigne la colonne de texte donnée au modèle, ou None pour n'en donner aucune.
     """
     y = df["canular"].to_numpy().astype(int)
-    i_train, i_test = train_test_split(
-        np.arange(len(y)), test_size=0.25, stratify=y, random_state=GRAINE
-    )
+    i_train, i_test = decouper(y, groupes)
 
     blocs_train, blocs_test = [], []
 
@@ -355,6 +364,7 @@ def entrainer(df, texte, avec_delai):
         "signalements": int(predit.sum()),
         "attrapes": int(((predit == 1) & (y[i_test] == 1)).sum()),
         "y_test": y[i_test],
+        "indices_test": i_test,
     }
 
 
@@ -462,6 +472,47 @@ def meilleur_modele_honnete(df):
     }
 
 
+TAILLE_TEXTE_DISCRIMINANT = 80
+
+
+def grouper_evenements(df):
+    """Numérote les événements : un numéro par apparition, pas par témoin.
+
+    Deux relevés parlent du même événement s'ils partagent la ville, l'état et le
+    jour, ou si leur témoignage est recopié mot pour mot. On n'applique le second
+    critère qu'aux textes assez longs : « Fireball » écrit par douze personnes dans
+    douze villes n'est pas un événement, c'est un mot banal.
+    """
+    parent = list(range(df.height))
+
+    def racine(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def unir(membres):
+        premier = racine(membres[0])
+        for autre in membres[1:]:
+            parent[racine(autre)] = premier
+
+    indexe = df.with_row_index("i").with_columns(jour=pl.col("datetime").dt.date())
+    meme_lieu_jour = indexe.group_by(["city", "state", "jour"]).agg(pl.col("i"))
+    meme_texte = (
+        indexe.filter(
+            pl.col("comments").str.len_chars() > TAILLE_TEXTE_DISCRIMINANT
+        )
+        .group_by("comments")
+        .agg(pl.col("i"))
+    )
+    for lot in (meme_lieu_jour, meme_texte):
+        for membres in lot["i"].to_list():
+            if len(membres) > 1:
+                unir(membres)
+
+    return np.array([racine(i) for i in range(df.height)])
+
+
 def phase6_modele_du_stagiaire(honnete, meilleur):
     """Baseline « jamais un canular », à mettre en face du vrai modèle."""
     titre(6, "le modèle le plus bête du Bureau")
@@ -471,17 +522,92 @@ def phase6_modele_du_stagiaire(honnete, meilleur):
     canulars = int(vrai.sum())
 
     print("Système du stagiaire : répondre « ce n'est pas un canular », quoi qu'il arrive.")
-    print(f"\n{'':<34}{'bonnes réponses':>17}{'canulars attrapés':>20}")
-    for nom, exactitude, attrapes in (
-        ("le stagiaire", accuracy_score(vrai, stagiaire), 0),
-        ("mon modèle (régression)", honnete["exactitude"], honnete["attrapes"]),
-        ("mon meilleur modèle (boosting)", meilleur["exactitude"], meilleur["attrapes"]),
+    print(f"\n{'':<32}{'bonnes réponses':>16}{'attrapés':>14}{'relus pour rien':>17}")
+    for nom, resultat in (
+        ("le stagiaire", {"exactitude": accuracy_score(vrai, stagiaire),
+                          "attrapes": 0, "signalements": 0}),
+        ("mon modèle (régression)", honnete),
+        ("mon meilleur modèle (boosting)", meilleur),
     ):
-        print(f"{nom:<34}{exactitude:>16.2%}{f'{attrapes} / {canulars}':>20}")
+        attrapes = resultat["attrapes"]
+        print(f"{nom:<32}{resultat['exactitude']:>15.2%}"
+              f"{f'{attrapes} / {canulars}':>14}"
+              f"{resultat['signalements'] - attrapes:>17}")
 
     print("\nLe stagiaire gagne sur les bonnes réponses parce que dire non à tout suffit")
-    print(f"quand seulement {vrai.mean():.2%} des relevés sont des canulars.")
-    print("La mesure à présenter au Conseil est donc le nombre de canulars attrapés.")
+    print(f"quand seulement {vrai.mean():.2%} des relevés sont des canulars : il se trompe")
+    print(f"{canulars} fois, une par canular manqué, et n'accuse jamais personne à tort.")
+    print("\nPour faire mieux que lui sur cette mesure, il faudrait accuser à tort moins")
+    print("souvent qu'à raison, donc une précision au-dessus de 50 % : hors d'atteinte ici.")
+    print("La mesure à présenter au Conseil est le nombre de canulars attrapés, avec le")
+    print("nombre de dossiers à relire en face.")
+
+
+def phase7_un_seul_evenement(df, avant):
+    """Un événement ne doit pas avoir des témoins des deux côtés de la découpe."""
+    titre(7, "plusieurs témoins, un seul événement")
+
+    print("Deux relevés parlent du même événement s'ils partagent la ville, l'état et")
+    print("le jour de l'observation, ou si leur témoignage est recopié mot pour mot.")
+
+    groupes = grouper_evenements(df)
+    tailles = Counter(groupes)
+    plusieurs = {g: n for g, n in tailles.items() if n > 1}
+    plus_gros = max(tailles, key=tailles.get)
+
+    print(f"\nÉvénements signalés par plus d'un témoin : {len(plusieurs)}")
+    print(f"Relevés concernés                        : {sum(plusieurs.values())}")
+    print(f"Témoins du plus gros                     : {tailles[plus_gros]}")
+
+    # Combien de relevés se retrouvaient des deux côtés avec la découpe d'hier ?
+    y = df["canular"].to_numpy().astype(int)
+    i_train, i_test = decouper(y)
+    cote = np.zeros(len(y), dtype=int)
+    cote[i_test] = 1
+    a_cheval = sum(
+        n
+        for g, n in tailles.items()
+        if n > 1 and len(set(cote[groupes == g])) > 1
+    )
+    print(f"Relevés à cheval dans la découpe d'hier  : {a_cheval}")
+
+    doublons = (
+        df.filter(pl.col("comments").str.strip_chars() != "")
+        .group_by("comments")
+        .len()
+        .filter(pl.col("len") > 1)
+    )
+    print(f"\nTémoignages recopiés mot pour mot        : {int(doublons['len'].sum())} "
+          f"relevés, {doublons.height} textes distincts")
+    print(f"  dont textes de plus de {TAILLE_TEXTE_DISCRIMINANT} caractères, "
+          f"traités comme un même événement : "
+          f"{int(doublons.filter(pl.col('comments').str.len_chars() > TAILLE_TEXTE_DISCRIMINANT)['len'].sum())}")
+
+    apres = entrainer(df, texte="temoignage", avec_delai=False, groupes=groupes)
+    montrer_evenement(df, groupes, plus_gros, apres["indices_test"])
+
+    print(f"\n{'':<38}{'avant':>8}{'après':>8}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{avant['precision'] * 100:>8.0f}{apres['precision'] * 100:>8.0f}")
+    print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
+    return apres, groupes
+
+
+def montrer_evenement(df, groupes, numero, indices_test):
+    """Affiche un événement entier, tous ses témoins du même côté de la découpe."""
+    membres = np.flatnonzero(groupes == numero)
+    dans_test = set(indices_test)
+    cotes = {"test" if i in dans_test else "apprentissage" for i in membres}
+    lignes = df[membres.tolist()]
+    date = lignes["datetime"][0]
+    print(f"\nÉvénement le plus signalé : {lignes['city'][0]} ({lignes['state'][0]}), "
+          f"{date.date() if date else '?'} — {len(membres)} témoins, "
+          f"tous du côté {' et '.join(cotes)}")
+    for forme, texte in zip(lignes["shape"][:5], lignes["temoignage"][:5]):
+        print(f"  [{forme or '—':<9}] {texte[:78].replace('&#44', ',')}")
+    print(f"  … {len(membres) - 5} autres témoins" if len(membres) > 5 else "")
 
 
 def main():
@@ -493,6 +619,7 @@ def main():
     avant = phase4_premier_verdict(df)
     honnete, meilleur = phase5_fuite_temporelle(df, avant)
     phase6_modele_du_stagiaire(honnete, meilleur)
+    phase7_un_seul_evenement(df, honnete)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

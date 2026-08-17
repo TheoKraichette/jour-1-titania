@@ -186,3 +186,40 @@ rareté des canulars. Comme ils ne sont que 0,98 % du fichier, répondre non à 
 99,02 % de bonnes réponses sans jamais regarder un seul dossier. Appliqué à un fichier où un
 relevé sur deux serait un canular, le même système tomberait à 50 %. Son score dépend du
 fichier qu'on lui donne, pas de ce qu'il fait.
+
+Il y a d'ailleurs une raison arithmétique pour laquelle je ne pouvais pas le battre sur cette
+mesure. Lui se trompe 218 fois, une par canular manqué, et n'accuse personne à tort. Pour
+faire mieux, il me faudrait accuser à tort moins souvent qu'à raison, donc une précision
+au-dessus de 50 %. J'en suis à 4. Aucun réglage n'y aurait changé quoi que ce soit.
+
+## Phase 7 — Plusieurs témoins, un seul événement
+
+Deux relevés parlent du même événement s'ils partagent **la ville, l'état et le jour de
+l'observation**, ou si **leur témoignage est recopié mot pour mot**.
+
+- Événements signalés par plus d'un témoin : **2 418** (5 468 relevés concernés)
+- Témoins du plus gros : **56**
+- Relevés à cheval sur les deux côtés dans la découpe d'hier : **2 397**
+
+Le plus gros rassemblement est Tinley Park (Illinois), le 31 octobre 2004 — celui-là même que
+le conseiller à la cartographie cite dans son annotation. Le script l'affiche en entier, ses
+56 témoins alignés, tous du même côté de la nouvelle découpe.
+
+Pour les recopies mot pour mot : 612 relevés, 251 textes distincts. Je ne les traite pas tous
+de la même façon. La plupart sont des formulations trop banales pour trancher — « Fireball »
+écrit par douze personnes dans douze villes différentes n'est pas un événement, c'est un mot
+courant. Je ne regroupe que les textes de plus de 80 caractères, soit 56 relevés, où la
+recopie ne peut pas être un hasard. Le Bureau confirme d'ailleurs lui-même sur l'un d'eux :
+« One of four reports from same source ».
+
+|  | Avant | Après |
+|---|---|---|
+| Sur 100 canulars, attrapés | 32 | 30 |
+| Sur 100 signalés, justes | 3 | 3 |
+| AUC | 0,718 | 0,721 |
+
+Les deux nombres bougent peu. C'est logique : 2 397 relevés étaient mal placés, mais sur
+88 679 cela reste 2,7 % du fichier, et surtout mon modèle ne reconnaissait déjà plus grand
+chose depuis que la note du Bureau lui a été retirée. La fuite était réelle, son effet ici
+est petit — ça ne rend pas la correction facultative, ça montre qu'elle aurait davantage
+compté sur un modèle qui s'appuyait plus sur le texte.
