@@ -54,8 +54,13 @@ géocodage n'a pas su placer : zéro est un nombre valide, donc rien ne proteste
 point atterrit au large de l'Afrique.
 
 Une seule valeur, `33q.200088`, suffirait à faire basculer toute la colonne `latitude` en
-texte si on laissait la bibliothèque deviner les types. La carte que le Conseil demandait
-est dans `figures/carte.png`, elle se regénère à chaque exécution.
+texte si on laissait la bibliothèque deviner les types. Une fois les types corrigés, la
+carte que le Conseil demandait se trace sans rien changer d'autre :
+
+![Carte des observations](figures/carte.png)
+
+On reconnaît les États-Unis, l'Europe, le Japon et l'Australie. Le point isolé au large de
+l'Afrique, ce sont les 1 494 coordonnées à (0, 0).
 
 ## Phase 3 — Trier les canulars
 

@@ -2,9 +2,6 @@
 releves_klaxo3.csv
 *.csv
 
-figures/
-*.png
-
 __pycache__/
 *.py[cod]
 .venv/
