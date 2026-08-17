@@ -7,6 +7,7 @@ Télécharge la transmission et rejoue les six phases d'une traite.
 
 import csv
 import os
+import re
 import urllib.request
 from collections import Counter
 
@@ -56,6 +57,40 @@ def compter_lignes_physiques(chemin):
         return sum(bloc.count(b"\n") for bloc in iter(lambda: f.read(1 << 20), b""))
 
 
+DATE_SEULE = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
+
+
+def _numerique(valeur):
+    try:
+        float(valeur)
+        return True
+    except ValueError:
+        return False
+
+
+def reconstructions(champs):
+    """Reconstructions distinctes d'une ligne trop longue, en retirant un champ vide.
+
+    Une reconstruction n'est retenue que si les champs repères retombent sur leurs
+    pieds : date de publication, coordonnées et durée.
+    """
+    trouvees = set()
+    for i, valeur in enumerate(champs):
+        if valeur != "":
+            continue
+        candidat = tuple(champs[:i] + champs[i + 1 :])
+        if len(candidat) != len(COLONNES):
+            continue
+        if (
+            DATE_SEULE.match(candidat[8])
+            and _numerique(candidat[9])
+            and _numerique(candidat[10])
+            and (candidat[5] == "" or _numerique(candidat[5]))
+        ):
+            trouvees.add(candidat)
+    return trouvees
+
+
 def phase1_ouvrir_la_caisse():
     """Charger tout le fichier. Rendre : lignes du fichier, chargées, mises à part."""
     titre(1, "ouvrir la caisse")
@@ -93,6 +128,15 @@ def phase1_ouvrir_la_caisse():
         for i, valeur in enumerate(champs):
             nom = COLONNES[i] if i < len(COLONNES) else "— en trop —"
             print(f"  [{i:2}] {nom:<19} {valeur[:60]}")
+
+        # Peut-on les recoller en retirant le champ vide en trop ?
+        combien = Counter(len(reconstructions(c)) for _, c in rejets)
+        uniques = combien[1]
+        ambigues = sum(n for k, n in combien.items() if k > 1)
+        print(
+            f"\nRecollage : {uniques} lignes ont une reconstruction unique, "
+            f"{ambigues} en ont plusieurs, {combien[0]} aucune."
+        )
 
     return df
 
@@ -168,8 +212,38 @@ def carte_des_observations(df):
 def phase3_etiqueter_les_canulars(df):
     """Fabriquer l'étiquette « canular » : aucun champ ne la donne."""
     titre(3, "trier les canulars")
-    # TODO : une règle tenant en une phrase, son compte, sa proportion, sa limite.
-    # La source de l'étiquette conditionne la phase 5.
+
+    bas = pl.col("comments").str.to_lowercase()
+    # Le Bureau annote les dossiers douteux entre doubles parenthèses : ((HOAX??)),
+    # ((NUFORC Note: Possible hoax?? PD)) ou ((NUFORC Note: Student report. PD)).
+    dans_note = bas.str.contains(r"\(\([^)]*(?:hoax|student report)")
+    df = df.with_columns(canular=dans_note)
+
+    marques = int(df["canular"].sum())
+    print("Règle : dans sa note, le Bureau parle de « hoax » ou de « student report ».")
+    print(f"Marqués canulars : {marques} / {df.height} ({marques / df.height:.2%})")
+
+    compte = lambda expr: int(df.select(expr).to_series().sum())  # noqa: E731
+    hoax = bas.str.contains(r"\(\([^)]*hoax")
+    print(f"  dont « hoax »                                    : {compte(hoax)}")
+    print(f"  dont « student report » seul                     : {compte(dans_note & ~hoax)}")
+    print(f"  « hoax » écrit par le témoin, hors note, écarté  : "
+          f"{compte(bas.str.contains('hoax', literal=True) & ~hoax)}")
+    print(f"  parmi les marqués, « hoax?? », donc un doute     : "
+          f"{compte(bas.str.contains('hoax??', literal=True) & dans_note)}")
+
+    # Une méprise n'est pas un canular : le témoin a vu quelque chose, il l'a mal
+    # identifié. Ces notes-là ne comptent pas.
+    meprises = bas.str.contains(
+        r"\(\([^)]*(?:venus|sirius|jupiter|contrail|satellite|meteor|missile"
+        r"|advertising|balloon)"
+    )
+    print(f"  méprises annotées par le Bureau, non comptées    : {compte(meprises)}")
+
+    print("\nExemples marqués :")
+    for texte in df.filter(pl.col("canular"))["comments"].head(3).to_list():
+        print("  -", texte[:100].replace("&#44", ","))
+
     return df
 
 

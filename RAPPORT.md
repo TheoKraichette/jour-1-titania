@@ -64,9 +64,28 @@ l'Afrique, ce sont les 1 494 coordonnées à (0, 0).
 
 ## Phase 3 — Trier les canulars
 
-- La règle, en une phrase :
-- Relevés marqués canulars : `…` (`…` %)
-- Ce que la règle rate ou attrape à tort :
+**La règle :** un relevé est un canular si le Bureau a écrit dans sa note qu'il s'agit d'un
+canular, ou d'un rapport d'élève qu'il ne peut pas certifier.
+
+- Marqués canulars : **871** sur 88 679, soit **0,98 %** — 781 notés « hoax », 90 notés
+  « student report » seulement
+
+Le Bureau annote les dossiers douteux entre doubles parenthèses : `((HOAX??))` devant le
+témoignage, ou `((NUFORC Note: Student report. PD))` à la fin. Je ne retiens que ce qui est
+écrit dans ces notes. 21 autres relevés contiennent bien le mot « hoax », mais c'est le
+témoin qui l'écrit, souvent pour jurer que son observation n'en est pas un.
+
+J'ai regardé ce que le Bureau écrit d'autre. Il annote surtout des méprises — Vénus, Sirius,
+une traînée d'avion, un lancement de missile — soit 1 478 relevés. Je ne les compte pas :
+le témoin a bien vu quelque chose, il l'a mal identifié, ce n'est pas un mensonge.
+
+Ce que la règle rate : tous les canulars que le Bureau n'a jamais annotés. Elle ne mesure
+pas les canulars, elle mesure le travail d'annotation du Bureau. 0,98 % est donc un
+plancher, sûrement très en dessous du vrai chiffre.
+
+Ce qu'elle attrape à tort : 622 des 871 notes disent « hoax?? », avec deux points
+d'interrogation. C'est un soupçon, pas un verdict, et je les compte quand même comme
+canulars.
 
 ## Phase 4 — Le premier verdict
 
