@@ -96,7 +96,7 @@ canulars.
 ## Phase 4 — Le premier verdict
 
 - Sur 100 canulars réellement présents, le système en attrape : **100**
-- Sur 100 relevés signalés, sont vraiment des canulars : **96**
+- Sur 100 relevés signalés, sont vraiment des canulars : **92**
 
 Ces deux nombres sont calculés sur un quart des relevés, soit **22 170 lignes dont 218
 canulars**, mises de côté avant l'entraînement et que le modèle n'a jamais vues. Le tirage
@@ -106,6 +106,20 @@ la graine est fixée à 0 pour que le découpage soit toujours le même.
 Le modèle est une régression logistique. Il reçoit le témoignage entier découpé en mots, la
 forme et le pays, la durée, les coordonnées, et le nombre de jours entre l'observation et sa
 publication.
+
+Un réglage avant de commencer : la force de régularisation. Le vocabulaire fait près de
+13 000 colonnes pour 650 canulars à l'entraînement, donc le modèle a toute la place
+d'apprendre par cœur. Je découpe une validation **dans la partie apprentissage** — 49 881
+relevés pour apprendre, 16 628 pour juger — et j'essaie six valeurs :
+
+| C | 0,003 | 0,01 | **0,03** | 0,1 | 0,3 | 1 |
+|---|---|---|---|---|---|---|
+| AUC sur la validation | 0,705 | 0,726 | **0,736** | 0,731 | 0,717 | 0,698 |
+
+Je retiens 0,03. La valeur par défaut des bibliothèques est 1, et c'est la pire des six :
+le modèle qu'on obtient sans rien régler est un modèle qui récite. Le test n'entre pas dans
+ce choix, et je ne retouche plus ce réglage — les comparaisons avant/après des phases
+suivantes portent ainsi sur ce que je corrige, pas sur un réglage qui aurait bougé en route.
 
 Attraper 100 canulars sur 100, ça ne ressemble pas à un vrai résultat. Je regarde d'où ça
 vient à la phase suivante.
@@ -132,10 +146,10 @@ bien là quand le signalement arrive.
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 100 | 32 |
-| Sur 100 signalés, justes | 96 | 3 |
-| Relevés dénoncés sur 22 170 | 226 | 2 180 |
-| AUC (0,5 = tirage au sort) | 1,000 | 0,718 |
+| Sur 100 canulars, attrapés | 100 | 58 |
+| Sur 100 signalés, justes | 92 | 3 |
+| Relevés dénoncés sur 22 170 | 235 | 4 997 |
+| AUC (0,5 = tirage au sort) | 1,000 | 0,765 |
 
 Le premier chiffre n'avait pas le droit d'exister parce que la réponse à deviner était écrite
 dans le texte que je donnais à lire : le mot « hoax » de la note servait à la fois à
@@ -144,8 +158,8 @@ conclusion qu'un employé du Bureau avait tirée des semaines plus tôt. Devant 
 qui vient d'arriver, cette note n'existe pas et la date de publication non plus : il ne reste
 que le récit du témoin, et y repérer un mensonge est autrement plus difficile.
 
-La troisième ligne dit tout : pour attraper ses canulars, le modèle honnête en dénonce 2 180
-là où le premier en dénonçait 226.
+La troisième ligne dit tout : pour attraper ses canulars, le modèle honnête en dénonce 4 997
+là où le premier en dénonçait 235.
 
 J'ai vérifié que le nettoyage tenait. Plus aucun relevé étiqueté canular ne contient de
 marqueur, et les mots que le modèle juge les plus révélateurs sont devenus du vocabulaire
@@ -156,20 +170,20 @@ du Bureau qui rentrait, déguisée en statistique.
 
 Enfin, pour savoir si ce plancher venait de l'information manquante ou de mon choix de
 modèle, j'ai construit le meilleur système que je pouvais sans jamais lire le Bureau : un
-gradient boosting, avec le témoignage résumé en 120 dimensions. Il monte à **59 attrapés sur
-100 et 4 justes sur 100**, AUC 0,813. C'est bien mieux que ma régression logistique, donc une
-partie du plancher venait bien du modèle — mais il dénonce quand même 3 279 relevés pour en
-trouver 128 vrais. L'écart avec la phase 4 ne se referme pas.
+gradient boosting, avec le témoignage résumé en 120 dimensions. Il attrape **51 canulars sur
+100 avec 5 justes sur 100**, AUC 0,827. Il en attrape un peu moins que ma régression, mais
+en dénonçant deux fois moins de monde : 2 409 relevés contre 4 997. Une partie du plancher
+venait donc bien du modèle, et l'écart avec la phase 4 ne se referme pas pour autant.
 
 ## Phase 6 — Le modèle le plus bête du Bureau
 
 Son système tient en une ligne : répondre « ce n'est pas un canular », toujours.
 
-|  | Bonnes réponses | Canulars attrapés |
-|---|---|---|
-| Le stagiaire | **99,02 %** | 0 sur 218 |
-| Mon modèle (régression logistique) | 89,81 % | 69 sur 218 |
-| Mon meilleur modèle (gradient boosting) | 85,38 % | 128 sur 218 |
+|  | Bonnes réponses | Canulars attrapés | Dossiers à relire |
+|---|---|---|---|
+| Le stagiaire | **99,02 %** | 0 sur 218 | 0 |
+| Mon modèle (régression logistique) | 77,61 % | 126 sur 218 | 4 997 |
+| Mon meilleur modèle (gradient boosting) | 89,16 % | 112 sur 218 | 2 409 |
 
 Le classement s'inverse d'une colonne à l'autre : plus un système attrape de canulars, plus
 son taux de bonnes réponses baisse. C'est déjà tout le problème.
@@ -178,8 +192,9 @@ son taux de bonnes réponses baisse. C'est déjà tout le problème.
 nombre de dossiers à relire.** Le Bureau veut arrêter de perdre du temps sur des signalements
 inventés, donc la seule question qui compte est combien on en retrouve, et à quel prix. Le
 stagiaire en retrouve zéro : son système ne fait gagner aucune minute à personne. Le mien en
-retrouve 128 sur 218 en faisant relire 3 279 dossiers au lieu de 22 170, soit 6 canulars sur
-10 pour 85 % de travail en moins.
+retrouve 126 sur 218 en faisant relire 4 997 dossiers au lieu de 22 170, soit près de 6
+canulars sur 10 pour 78 % de travail en moins ; le boosting en retrouve 112 pour 2 409
+dossiers, soit 89 % de travail en moins.
 
 Pourquoi son 99 % ne prouve rien : ce score ne mesure pas sa capacité à trier, il mesure la
 rareté des canulars. Comme ils ne sont que 0,98 % du fichier, répondre non à tout donne
@@ -190,7 +205,7 @@ fichier qu'on lui donne, pas de ce qu'il fait.
 Il y a d'ailleurs une raison arithmétique pour laquelle je ne pouvais pas le battre sur cette
 mesure. Lui se trompe 218 fois, une par canular manqué, et n'accuse personne à tort. Pour
 faire mieux, il me faudrait accuser à tort moins souvent qu'à raison, donc une précision
-au-dessus de 50 %. J'en suis à 4. Aucun réglage n'y aurait changé quoi que ce soit.
+au-dessus de 50 %. J'en suis à 3. Aucun réglage n'y aurait changé quoi que ce soit.
 
 ## Phase 7 — Plusieurs témoins, un seul événement
 
@@ -214,15 +229,15 @@ recopie ne peut pas être un hasard. Le Bureau confirme d'ailleurs lui-même sur
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 32 | 30 |
+| Sur 100 canulars, attrapés | 58 | 61 |
 | Sur 100 signalés, justes | 3 | 3 |
-| AUC | 0,718 | 0,721 |
+| AUC | 0,765 | 0,773 |
 
-Les deux nombres bougent peu. C'est logique : 2 397 relevés étaient mal placés, mais sur
-88 679 cela reste 2,7 % du fichier, et surtout mon modèle ne reconnaissait déjà plus grand
-chose depuis que la note du Bureau lui a été retirée. La fuite était réelle, son effet ici
-est petit — ça ne rend pas la correction facultative, ça montre qu'elle aurait davantage
-compté sur un modèle qui s'appuyait plus sur le texte.
+Les deux nombres bougent peu, et dans le bon sens. C'est logique : 2 397 relevés étaient mal
+placés, mais sur 88 679 cela reste 2,7 % du fichier, et surtout mon modèle ne reconnaissait
+déjà plus grand chose depuis que la note du Bureau lui a été retirée. La fuite était réelle,
+son effet ici est petit — ça ne rend pas la correction facultative, ça montre qu'elle aurait
+davantage compté sur un modèle qui s'appuyait plus sur le texte.
 
 ## Phase 8 — L'ordre des choses
 
@@ -242,9 +257,9 @@ après celles du test. Je coupe aussi par événement, pour ne pas défaire la p
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 30 | 34 |
-| Sur 100 signalés, justes | 3 | 2 |
-| AUC | 0,721 | **0,616** |
+| Sur 100 canulars, attrapés | 61 | 63 |
+| Sur 100 signalés, justes | 3 | 1 |
+| AUC | 0,773 | **0,681** |
 
 Les deux proportions ne sont pas égales, et en regardant année par année on comprend
 pourquoi : les canulars n'ont pas diminué, c'est le Bureau qui a changé de pratique. Avant
@@ -253,7 +268,7 @@ apparaissent en 2004, culminent vers 2008 à 2,85 %, puis retombent à 0,48 % en
 
 Mon étiquette ne mesure donc pas la fréquence des canulars mais le rythme de travail des
 annotateurs, et ce rythme change dans le temps. C'est ce qui explique la chute de l'AUC de
-0,721 à 0,616 : le modèle a appris ce qu'était un canular pendant les années fastes de
+0,773 à 0,681 : le modèle a appris ce qu'était un canular pendant les années fastes de
 l'annotation, et on le note sur une période où le Bureau annotait deux fois moins.
 
 ## Phase 9 — Les cases vides
@@ -283,9 +298,9 @@ un trou à cet endroit, même après que le trou a été bouché.
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 34 | 34 |
-| Sur 100 signalés, justes | 2 | 2 |
-| AUC | 0,616 | 0,620 |
+| Sur 100 canulars, attrapés | 63 | 63 |
+| Sur 100 signalés, justes | 1 | 1 |
+| AUC | 0,681 | 0,686 |
 
 ## Phase 10 — La chaîne de traitement du Bureau
 
@@ -309,9 +324,9 @@ vocabulaire et le modèle s'enchaînent, un verdict sort.
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 34 | 34 |
-| Sur 100 signalés, justes | 2 | 2 |
-| AUC | 0,620 | 0,620 |
+| Sur 100 canulars, attrapés | 63 | 63 |
+| Sur 100 signalés, justes | 1 | 1 |
+| AUC | 0,686 | 0,686 |
 
 Les chiffres ne bougent pas, et je préfère le dire franchement : je calculais déjà mes
 médianes et mon vocabulaire sur la seule partie apprentissage, donc la faute que le Conseil
@@ -376,9 +391,9 @@ verse toutes les autres dans un même sac « ville rare ».
 
 | Tableau donné au modèle | Colonnes |
 |---|---|
-| sans la ville | 13 149 |
-| avec une colonne par ville | **32 104** |
-| avec la règle | **13 651** (dont 502 de ville) |
+| sans la ville | 13 158 |
+| avec une colonne par ville | **32 112** |
+| avec la règle | **13 660** (dont 502 de ville) |
 
 Une colonne par ville aurait ajouté 19 000 colonnes dont la plupart n'auraient contenu qu'un
 seul 1 — le modèle aurait appris par cœur des villes qu'il ne reverra jamais.
@@ -401,9 +416,9 @@ même sac que les villes rares.
 
 |  | Avant | Après |
 |---|---|---|
-| Sur 100 canulars, attrapés | 34 | 24 |
-| Sur 100 signalés, justes | 2 | 1 |
-| AUC | 0,620 | 0,616 |
+| Sur 100 canulars, attrapés | 63 | 62 |
+| Sur 100 signalés, justes | 1 | 1 |
+| AUC | 0,686 | 0,680 |
 
 Le résultat baisse, et je ne vais pas prétendre le contraire. La ville n'apporte rien parce
 que le modèle dispose déjà de la latitude et de la longitude, qui portent la même information
@@ -420,14 +435,20 @@ sur la partie apprentissage seule et jamais sur le test.
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |
 |---|---|---|---|---|
-| 5-6 | modèle honnête, découpe au hasard | 32 | 3 | 0,718 |
-| 7 | un événement ne peut plus être coupé en deux | 30 | 3 | 0,721 |
-| 8 | apprendre sur le passé, être noté sur l'avenir | 34 | 2 | **0,616** |
-| 9 | les trous sont marqués au lieu d'être effacés | 34 | 2 | 0,620 |
-| 10 | rien n'est appris avant la découpe | 34 | 2 | 0,620 |
-| 12 | ville regroupée et heure circulaire | 24 | 1 | 0,616 |
+| 4 | régularisation réglée sur une validation, pas laissée par défaut | 100 | 92 | 1,000 |
+| 5-6 | modèle honnête, découpe au hasard | 58 | 3 | 0,765 |
+| 7 | un événement ne peut plus être coupé en deux | 61 | 3 | 0,773 |
+| 8 | apprendre sur le passé, être noté sur l'avenir | 63 | 1 | **0,681** |
+| 9 | les trous sont marqués au lieu d'être effacés | 63 | 1 | 0,686 |
+| 10 | rien n'est appris avant la découpe | 63 | 1 | 0,686 |
+| 12 | ville regroupée et heure circulaire | 62 | 1 | 0,680 |
 
 La seule correction qui fait vraiment mal est la phase 8. Les autres déplacent les chiffres
 de peu, parce que le gros de la triche avait déjà été retiré en phase 5 avec la note du
-Bureau. Passer de 0,72 à 0,62 en remettant les dossiers dans l'ordre du temps, c'est la
+Bureau. Passer de 0,77 à 0,68 en remettant les dossiers dans l'ordre du temps, c'est la
 mesure de ce que valait vraiment mon système : il ne prédisait pas l'avenir, il le relisait.
+
+Deux lancements du script rendent exactement les mêmes nombres. Il a fallu fixer trois
+choses pour ça : la graine du solveur, qui mélange les relevés avant de travailler ; l'ordre
+des regroupements, que la bibliothèque ne garantit pas ; et le départage des dossiers publiés
+le même jour, faute de quoi la coupure ne tombait pas deux fois au même endroit.

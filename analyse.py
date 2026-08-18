@@ -198,7 +198,9 @@ def phase2_typer(df):
         converti = df.select(expr).to_series()
         vide = brut.str.strip_chars() == ""
         resiste = ~vide & converti.is_null()
-        fautives = brut.filter(resiste).unique().head(4).to_list()
+        # trié : `unique` ne garantit pas l'ordre, et deux lancements doivent
+        # afficher les mêmes exemples.
+        fautives = brut.filter(resiste).unique().sort().head(4).to_list()
         print(f"{col:<18} {vide.sum():>6} {resiste.sum():>10}   {fautives}")
 
     compte = lambda expr: int(df.select(expr).to_series().sum())  # noqa: E731
@@ -355,11 +357,14 @@ def decoupe_temporelle(df, groupes, part_test=0.25):
     dossier, et on coupe par événement : un événement bascule en entier du côté de
     sa première publication, pour ne pas défaire la phase 7.
     """
+    # Trié aussi sur le numéro d'événement : beaucoup de dossiers sont publiés le
+    # même jour, et sans second critère la coupure ne tombe pas deux fois au même
+    # endroit.
     par_groupe = (
         pl.DataFrame({"groupe": groupes, "publie": df["date_posted"]})
-        .group_by("groupe")
+        .group_by("groupe", maintain_order=True)
         .agg(pl.col("publie").min().alias("publie"), pl.len().alias("taille"))
-        .sort("publie")
+        .sort(["publie", "groupe"])
     )
     cumul = par_groupe["taille"].cum_sum()
     limite = int(df.height * (1 - part_test))
@@ -372,10 +377,11 @@ def decoupe_temporelle(df, groupes, part_test=0.25):
     return np.flatnonzero(dans_train), np.flatnonzero(~dans_train), date_coupure
 
 
-def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
+def entrainer(df, texte, avec_delai, C, groupes=None, decoupe=None):
     """Entraîne un modèle et l'évalue sur un quart des relevés, mis de côté d'avance.
 
     `texte` désigne la colonne de texte donnée au modèle, ou None pour n'en donner aucune.
+    `C` est la force de régularisation, réglée une fois pour toutes avant la phase 4.
     """
     y = df["canular"].to_numpy().astype(int)
     i_train, i_test = decoupe if decoupe is not None else decouper(y, groupes)
@@ -408,7 +414,11 @@ def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
 
     # liblinear plutôt que le solveur par défaut : même résultat, deux fois et demie
     # plus rapide sur une matrice creuse de cette largeur.
-    modele = LogisticRegression(solver="liblinear", class_weight="balanced")
+    # random_state : liblinear mélange les relevés avant de descendre, et sans graine
+    # deux lancements ne rendent pas exactement les mêmes chiffres.
+    modele = LogisticRegression(
+        solver="liblinear", class_weight="balanced", C=C, random_state=GRAINE
+    )
     modele.fit(hstack(blocs_train).tocsr(), y[i_train])
     X_test = hstack(blocs_test).tocsr()
     predit = modele.predict(X_test)
@@ -427,11 +437,43 @@ def entrainer(df, texte, avec_delai, groupes=None, decoupe=None):
     }
 
 
-def phase4_premier_verdict(df):
+GRILLE_C = [0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+
+
+def regler_regularisation(df):
+    """Choisit la force de régularisation avant tout le reste.
+
+    Le choix se fait sur une validation découpée dans l'apprentissage : le test
+    n'y entre pas, et la valeur retenue ne bouge plus ensuite. Les comparaisons
+    avant/après des phases suivantes portent ainsi sur ce que je corrige, pas sur
+    un réglage qui aurait changé en route.
+    """
+    y = df["canular"].to_numpy().astype(int)
+    i_train, _ = decouper(y)
+    i_a, i_b = train_test_split(
+        i_train, test_size=0.25, stratify=y[i_train], random_state=GRAINE
+    )
+    print("Force de régularisation, réglée sur une validation prise dans")
+    print(f"l'apprentissage ({len(i_a)} relevés pour apprendre, {len(i_b)} pour juger) :")
+    print(f"{'C':>8}{'AUC':>10}")
+
+    essais = []
+    for C in GRILLE_C:
+        auc = entrainer(df, texte="temoignage", avec_delai=False, C=C,
+                        decoupe=(i_a, i_b))["auc"]
+        essais.append((C, auc))
+        print(f"{C:>8}{auc:>10.3f}")
+
+    retenu = max(essais, key=lambda e: e[1])[0]
+    print(f"Retenu : C = {retenu} (la valeur par défaut des bibliothèques est 1).")
+    return retenu
+
+
+def phase4_premier_verdict(df, C):
     """Un modèle, évalué sur des relevés jamais vus : rappel et précision."""
     titre(4, "le premier verdict")
 
-    resultat = entrainer(df, texte="comments", avec_delai=True)
+    resultat = entrainer(df, texte="comments", avec_delai=True, C=C)
     print(
         f"Test sur {resultat['n_test']} relevés jamais vus à l'entraînement, "
         f"dont {resultat['canulars_test']} canulars."
@@ -460,7 +502,7 @@ PROVENANCE = [
 ]
 
 
-def phase5_fuite_temporelle(df, avant):
+def phase5_fuite_temporelle(df, avant, C):
     """Retirer les colonnes remplies après coup, réentraîner, comparer."""
     titre(5, "le Conseil ne vous croit pas")
 
@@ -471,7 +513,7 @@ def phase5_fuite_temporelle(df, avant):
     sortent = [colonne for colonne, _, _, savait in PROVENANCE if savait]
     print(f"\nSortent du modèle : {', '.join(sortent)}")
 
-    apres = entrainer(df, texte="temoignage", avec_delai=False)
+    apres = entrainer(df, texte="temoignage", avec_delai=False, C=C)
 
     print(f"\n{'':<38}{'avant':>8}{'après':>8}")
     print(f"{'sur 100 canulars réels, attrapés':<38}"
@@ -513,7 +555,10 @@ def meilleur_modele_honnete(df):
     texte_train = resume.fit_transform(tfidf.fit_transform([textes[i] for i in i_train]))
     texte_test = resume.transform(tfidf.transform([textes[i] for i in i_test]))
 
-    modele = HistGradientBoostingClassifier(class_weight="balanced", random_state=GRAINE)
+    # 64 paliers au lieu de 255 : trois fois plus rapide, et le résultat ne perd rien.
+    modele = HistGradientBoostingClassifier(
+        class_weight="balanced", random_state=GRAINE, max_bins=64
+    )
     modele.fit(
         np.hstack([encodeur.fit_transform(cats[i_train]), nums[i_train], texte_train]),
         y[i_train],
@@ -570,13 +615,17 @@ def grouper_evenements(df):
         for autre in membres[1:]:
             parent[racine(autre)] = premier
 
+    # maintain_order : sans lui, l'ordre des groupes varie d'un lancement à l'autre
+    # et les numéros d'événement avec lui.
     indexe = df.with_row_index("i").with_columns(jour=pl.col("datetime").dt.date())
-    meme_lieu_jour = indexe.group_by(["city", "state", "jour"]).agg(pl.col("i"))
+    meme_lieu_jour = indexe.group_by(
+        ["city", "state", "jour"], maintain_order=True
+    ).agg(pl.col("i"))
     meme_texte = (
         indexe.filter(
             pl.col("comments").str.len_chars() > TAILLE_TEXTE_DISCRIMINANT
         )
-        .group_by("comments")
+        .group_by("comments", maintain_order=True)
         .agg(pl.col("i"))
     )
     for lot in (meme_lieu_jour, meme_texte):
@@ -617,7 +666,7 @@ def phase6_modele_du_stagiaire(honnete, meilleur):
     print("nombre de dossiers à relire en face.")
 
 
-def phase7_un_seul_evenement(df, avant):
+def phase7_un_seul_evenement(df, avant, C):
     """Un événement ne doit pas avoir des témoins des deux côtés de la découpe."""
     titre(7, "plusieurs témoins, un seul événement")
 
@@ -638,10 +687,12 @@ def phase7_un_seul_evenement(df, avant):
     i_train, i_test = decouper(y)
     cote = np.zeros(len(y), dtype=int)
     cote[i_test] = 1
-    a_cheval = sum(
-        n
-        for g, n in tailles.items()
-        if n > 1 and len(set(cote[groupes == g])) > 1
+    a_cheval = (
+        pl.DataFrame({"groupe": groupes, "cote": cote})
+        .group_by("groupe")
+        .agg(pl.len().alias("temoins"), pl.col("cote").n_unique().alias("cotes"))
+        .filter(pl.col("cotes") > 1)["temoins"]
+        .sum()
     )
     print(f"Relevés à cheval dans la découpe d'hier  : {a_cheval}")
 
@@ -657,7 +708,7 @@ def phase7_un_seul_evenement(df, avant):
           f"traités comme un même événement : "
           f"{int(doublons.filter(pl.col('comments').str.len_chars() > TAILLE_TEXTE_DISCRIMINANT)['len'].sum())}")
 
-    apres = entrainer(df, texte="temoignage", avec_delai=False, groupes=groupes)
+    apres = entrainer(df, texte="temoignage", avec_delai=False, C=C, groupes=groupes)
     montrer_evenement(df, groupes, plus_gros, apres["indices_test"])
 
     print(f"\n{'':<38}{'avant':>8}{'après':>8}")
@@ -684,7 +735,7 @@ def montrer_evenement(df, groupes, numero, indices_test):
     print(f"  … {len(membres) - 5} autres témoins" if len(membres) > 5 else "")
 
 
-def phase8_ordre_du_temps(df, groupes, avant):
+def phase8_ordre_du_temps(df, groupes, avant, C):
     """Apprendre sur le passé et être noté sur l'avenir, pas l'inverse."""
     titre(8, "l'ordre des choses")
 
@@ -716,7 +767,7 @@ def phase8_ordre_du_temps(df, groupes, avant):
               f"dossiers annotés {ligne['annotes']:>6.2%}")
 
     apres = entrainer(
-        df, texte="temoignage", avec_delai=False, decoupe=(i_train, i_test)
+        df, texte="temoignage", avec_delai=False, C=C, decoupe=(i_train, i_test)
     )
     print(f"\n{'':<38}{'avant':>8}{'après':>8}")
     print(f"{'sur 100 canulars réels, attrapés':<38}"
@@ -848,8 +899,10 @@ class Chaine:
     retaper à la main.
     """
 
-    def __init__(self, colonne_texte="temoignage", cols_cat=None, cols_num=None):
+    def __init__(self, colonne_texte="temoignage", cols_cat=None, cols_num=None,
+                 C=1.0):
         self.colonne_texte = colonne_texte
+        self.C = C
         self.cols_cat = cols_cat or COLS_CAT
         self.cols_num = cols_num or COLS_NUM
 
@@ -868,7 +921,9 @@ class Chaine:
         self.echelle = StandardScaler()
         echelonnes = self.echelle.fit_transform(self._boucher(nombres))
 
-        self.modele = LogisticRegression(solver="liblinear", class_weight="balanced")
+        self.modele = LogisticRegression(
+            solver="liblinear", class_weight="balanced", C=self.C, random_state=GRAINE
+        )
         self.modele.fit(
             hstack([texte, categories, csr_matrix(echelonnes)]).tocsr(), y
         )
@@ -900,6 +955,10 @@ class Chaine:
         X = self._transformer(df_brut)
         return self.modele.predict(X), self.modele.decision_function(X)
 
+    def probabilites(self, df_brut):
+        """La chance que le relevé soit un canular, entre 0 et 1."""
+        return self.modele.predict_proba(self._transformer(df_brut))[:, 1]
+
 
 RELEVE_INVENTE = {
     "datetime": "6/15/2015 23:30",
@@ -916,7 +975,7 @@ RELEVE_INVENTE = {
 }
 
 
-def phase10_chaine_de_traitement(df_brut, decoupe, avant):
+def phase10_chaine_de_traitement(df_brut, decoupe, avant, C):
     """Rien d'appris avant la découpe, et un relevé neuf traverse tout d'un coup."""
     titre(10, "la chaîne de traitement du Bureau")
 
@@ -926,7 +985,7 @@ def phase10_chaine_de_traitement(df_brut, decoupe, avant):
     print(f"  apprentissage : {y[i_train].mean():.2%} sur {len(i_train)} relevés")
     print(f"  test          : {y[i_test].mean():.2%} sur {len(i_test)} relevés")
 
-    chaine = Chaine().apprendre(df_brut[i_train.tolist()], y[i_train])
+    chaine = Chaine(C=C).apprendre(df_brut[i_train.tolist()], y[i_train])
     predit, _ = chaine.repondre(df_brut[i_test.tolist()])
 
     print("\nUn relevé inventé à la main traverse la chaîne :")
@@ -959,7 +1018,7 @@ def distance_horaire(a, b):
     )
 
 
-def phase12_ville_et_heure(df_brut, decoupe, avant):
+def phase12_ville_et_heure(df_brut, decoupe, avant, C):
     """Deux informations riches, deux façons de se planter."""
     titre(12, "la ville et l'heure")
 
@@ -982,7 +1041,7 @@ def phase12_ville_et_heure(df_brut, decoupe, avant):
     print(f"dans « circle » : {formes}, dont les plus rares seront regroupées ensuite.")
 
     chaine = Chaine(
-        cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL
+        cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL, C=C
     ).apprendre(df_brut[i_train.tolist()], y[i_train])
     rang_ville = COLS_CAT_FINAL.index("city")
     noms = chaine.encodeur.get_feature_names_out()
@@ -1011,10 +1070,9 @@ def phase12_ville_et_heure(df_brut, decoupe, avant):
     print(f"{'AUC':<38}{avant['auc']:>8.3f}{apres['auc']:>8.3f}")
     print("\nAucun de mes encodages ne se sert de la cible : ce sont des comptages de")
     print("fréquence, appris sur la partie apprentissage seule, jamais sur le test.")
-    return apres
+    return apres, chaine
 
-
-def phase9_cases_vides(df, decoupe, avant):
+def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
 
@@ -1035,7 +1093,7 @@ def phase9_cases_vides(df, decoupe, avant):
     print("j'ajoute une colonne « cette case était vide » pour chacune des trois.")
     print("Le trou est bouché, sa trace est conservée, le modèle peut encore s'en servir.")
 
-    apres = entrainer(df, texte="temoignage", avec_delai=False, decoupe=decoupe)
+    apres = entrainer(df, texte="temoignage", avec_delai=False, C=C, decoupe=decoupe)
     print(f"\n{'':<38}{'avant':>8}{'après':>8}")
     print(f"{'sur 100 canulars réels, attrapés':<38}"
           f"{avant['rappel'] * 100:>8.0f}{apres['rappel'] * 100:>8.0f}")
@@ -1051,18 +1109,21 @@ def main():
     df = phase2_typer(brut)
     df = phase3_etiqueter_les_canulars(df)
     df = ajouter_temoignage(ajouter_delai(df))
-    avant = phase4_premier_verdict(df)
-    honnete, meilleur = phase5_fuite_temporelle(df, avant)
+    C = regler_regularisation(df)
+    avant = phase4_premier_verdict(df, C)
+    honnete, meilleur = phase5_fuite_temporelle(df, avant, C)
     phase6_modele_du_stagiaire(honnete, meilleur)
-    par_evenement, groupes = phase7_un_seul_evenement(df, honnete)
-    dans_le_temps, (i_train, i_test, _) = phase8_ordre_du_temps(df, groupes, par_evenement)
-    sans_trous, _ = phase9_cases_vides(df, (i_train, i_test), dans_le_temps)
+    par_evenement, groupes = phase7_un_seul_evenement(df, honnete, C)
+    dans_le_temps, (i_train, i_test, _) = phase8_ordre_du_temps(
+        df, groupes, par_evenement, C
+    )
+    sans_trous, _ = phase9_cases_vides(df, (i_train, i_test), dans_le_temps, C)
     avec_etiquette = brut.with_columns(canular=df["canular"])
     en_chaine, _ = phase10_chaine_de_traitement(
-        avec_etiquette, (i_train, i_test), sans_trous
+        avec_etiquette, (i_train, i_test), sans_trous, C
     )
     phase11_duree(df)
-    phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine)
+    phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine, C)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 
