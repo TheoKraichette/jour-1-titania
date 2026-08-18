@@ -534,6 +534,95 @@ demanderait une partie test bien plus fournie en canulars, pas un troisième chi
 Cela vaut pour tous mes chiffres. Ceux que j'ai écrits jusqu'ici sont des points au milieu
 d'intervalles de cette largeur, et il faut les lire comme tels.
 
+## Phase 16 — Trois dossiers sur le bureau
+
+Le modèle est une somme : chaque colonne apporte sa valeur multipliée par son coefficient.
+Pour expliquer un dossier, il suffit donc de regarder les termes les plus gros. Les trois
+relevés viennent tous de la partie test, et leur numéro est celui de la ligne dans le fichier.
+
+**Dossier 1 — relevé n° 58291, monrowville (PA), 29 juin 2013.** Probabilité 0,959, la plus
+forte du test. Dénoncé, et **honnête en réalité**.
+
+> « Scarier !!!!!!! »
+
+| Ce qui a pesé | |
+|---|---|
+| +1,200 | sept points d'exclamation |
+| +0,789 | témoignage très court |
+| +0,693 | année récente |
+| +0,576 | forme `egg` |
+
+Ce dossier bascule sur la **forme du récit**, pas sur son contenu : sept points
+d'exclamation pour huit mots. Le modèle a appris que les canulars annotés sont brefs et
+excités. Ici il s'est trompé — un témoin peut être bref et excité sans mentir.
+
+**Dossier 2 — relevé n° 32351, leven (UK/England), 3 février 2012.** Probabilité 0,910,
+exactement ma frontière. Dénoncé, et **canular en réalité**.
+
+> au dossier : « ((HOAX??) We saw a very quick cigar shape go past 8 times. »
+> ce qu'il lit : « We saw a very quick cigar shape go past 8 times. »
+
+| Ce qui a pesé | |
+|---|---|
+| +0,634 | année récente |
+| +0,554 | témoignage court |
+| +0,422 | `country = gb` |
+| +0,325 / +0,303 | mots « saw », « we » |
+| −0,289 | l'état est renseigné |
+
+Rien ne fait basculer ce dossier : il monte par accumulation de petits indices, dont aucun ne
+dépasse 0,63. C'est ça, être « tout juste au-dessus » — pas un signal fort, une addition de
+signaux faibles. Le `country = gb` compte parce que le Bureau a davantage annoté les
+signalements britanniques.
+
+**Dossier 3 — relevé n° 77495, somerset (NJ), 27 août 2013.** Probabilité 0,873, sous ma
+frontière. **Laissé passer, canular en réalité.**
+
+> au dossier : « ((HOAX??)) Alien spotted. »
+> ce qu'il lit : « Alien spotted. »
+
+| Ce qui a pesé | |
+|---|---|
+| +1,140 | témoignage extrêmement court |
+| +0,958 | mot « alien » |
+| −0,359 | `country = us` |
+| −0,188 | `state = nj` |
+
+Celui-ci est l'inverse du deuxième : il a deux signaux **forts** en sa défaveur, mais il est
+américain, et 80 % des relevés le sont. Le pays le tire vers le bas assez pour le faire passer
+sous la frontière. Ce n'est pas le contenu qui l'a sauvé, c'est sa banalité géographique.
+
+### Le classement des colonnes
+
+J'abîme une colonne à la fois en mélangeant ses valeurs au hasard, et je regarde ce que perd
+l'AUC (référence 0,680).
+
+| Colonne | AUC abîmée | Chute |
+|---|---|---|
+| `comments` | 0,571 | **0,109** |
+| `datetime` | 0,664 | 0,016 |
+| `country` | 0,665 | 0,015 |
+| `shape` | 0,667 | 0,013 |
+| `duration_hours_min` | 0,667 | 0,013 |
+| `state` / `city` / `latitude` | 0,679 | 0,001 |
+| `longitude` / `duration_seconds` / `date_posted` | 0,680 | 0,000 |
+
+`date_posted` sert de témoin : elle est sortie du modèle en phase 5, sa chute doit valoir zéro,
+et elle vaut zéro. Le reste du tableau est donc lisible.
+
+**La colonne dont la place me surprend, c'est `duration_seconds` : zéro.** La colonne propre,
+celle en secondes, celle que tout le monde utiliserait, n'apporte rien du tout. Alors que
+`duration_hours_min` — la version sale, écrite à la main par le témoin — pèse 0,013. Et elle
+ne pèse pas par sa valeur, puisque le modèle ne lit pas ce texte : elle pèse **uniquement par
+sa case vide**, l'indicateur construit en phase 9. Autrement dit, savoir combien de temps a
+duré l'observation ne sert à rien ; savoir que le témoin n'a pas pris la peine de le noter
+sert. La phase 11 m'avait fait récupérer 27 durées perdues, et la phase 16 m'apprend qu'elles
+ne changeaient rien.
+
+Deuxième surprise, plus attendue : `city`, `latitude` et `longitude` valent 0,001 ou moins,
+après que la phase 12 leur a consacré 502 colonnes. La baisse constatée à la phase 12 n'était
+donc pas un accident de mesure.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |

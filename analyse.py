@@ -974,6 +974,31 @@ class Chaine:
         """La chance que le relevé soit un canular, entre 0 et 1."""
         return self.modele.predict_proba(self._transformer(df_brut))[:, 1]
 
+    def noms_des_colonnes(self):
+        """Le nom lisible de chaque colonne du tableau donné au modèle."""
+        mots = [f"mot « {m} »" for m in self.tfidf.get_feature_names_out()]
+        categories = []
+        for nom in self.encodeur.get_feature_names_out():
+            rang, valeur = nom.split("_", 1)
+            categories.append(f"{self.cols_cat[int(rang[1:])]} = {valeur}")
+        return mots + categories + self.cols_num + COLS_STYLE + COLS_MANQUE
+
+    def ce_qui_a_pese(self, ligne_brute, combien=6):
+        """Ce qui a poussé la décision pour un relevé, dans un sens ou dans l'autre.
+
+        Le modèle est une somme : chaque colonne apporte sa valeur multipliée par
+        son coefficient. Il suffit de regarder les termes les plus gros.
+        """
+        poids = (
+            self._transformer(ligne_brute).toarray()[0] * self.modele.coef_[0]
+        )
+        noms = self.noms_des_colonnes()
+        return [
+            (noms[i], float(poids[i]))
+            for i in np.argsort(-np.abs(poids))[:combien]
+            if poids[i] != 0
+        ]
+
 
 RELEVE_INVENTE = {
     "datetime": "6/15/2015 23:30",
@@ -1403,6 +1428,79 @@ def phase15_deux_analystes(df, df_brut, groupes, C, resultat13):
     return lignes
 
 
+# Une colonne du fichier d'origine à la fois. date_posted n'est plus lue par le
+# modèle depuis la phase 5 : elle sert ici de témoin, sa chute doit valoir zéro.
+COLONNES_A_ABIMER = [
+    "comments", "city", "state", "country", "shape", "duration_seconds",
+    "duration_hours_min", "datetime", "latitude", "longitude", "date_posted",
+]
+
+
+def importance_par_permutation(chaine, df_brut, y):
+    """Abîme une colonne en mélangeant ses valeurs, et mesure la chute."""
+    hasard = np.random.default_rng(GRAINE)
+    reference = roc_auc_score(y, chaine.probabilites(df_brut))
+    chutes = []
+    for colonne in COLONNES_A_ABIMER:
+        melange = hasard.permutation(df_brut[colonne].to_numpy())
+        abime = df_brut.with_columns(pl.Series(colonne, melange))
+        chutes.append((colonne, reference - roc_auc_score(y, chaine.probabilites(abime))))
+    return reference, sorted(chutes, key=lambda c: -c[1])
+
+
+def montrer_dossier(intitule, chaine, ligne, rang_fichier, proba, verite, frontiere):
+    print(f"\n{intitule}")
+    print(f"  relevé n° {rang_fichier} du fichier — {ligne['city'][0]} "
+          f"({ligne['state'][0] or '—'}), observé le {ligne['datetime'][0]}")
+    brut = (ligne["comments"][0] or "").replace("&#44", ",")
+    lu = re.sub(NOTE_DU_BUREAU, "", brut).strip()
+    if lu != brut.strip():
+        print(f"  au dossier   : « {brut[:110]} »")
+        print(f"  ce qu'il lit : « {lu[:110]} »   (la note du Bureau est retirée)")
+    else:
+        print(f"  « {lu[:120]} »")
+    print(f"  probabilité annoncée {proba:.3f} — "
+          f"{'DÉNONCÉ' if proba >= frontiere else 'laissé passer'}, "
+          f"{'canular' if verite else 'honnête'} en réalité")
+    print("  ce qui a pesé :")
+    for nom, poids in chaine.ce_qui_a_pese(ligne):
+        sens = "vers canular" if poids > 0 else "vers honnête"
+        print(f"    {poids:+7.3f}  {sens:<13} {nom}")
+
+
+def phase16_trois_dossiers(chaine, df_brut, decoupe, resultat13):
+    """Expliquer un dossier et expliquer le système sont deux questions."""
+    titre(16, "trois dossiers sur le bureau")
+
+    _, i_test = decoupe
+    y_test, probas = resultat13["y_test"], resultat13["probas"]
+    frontiere = resultat13["retenue"]
+    test = df_brut[i_test.tolist()]
+
+    sur = int(np.argmax(probas))
+    au_dessus = np.flatnonzero(probas >= frontiere)
+    juste = int(au_dessus[np.argmin(probas[au_dessus])])
+    manques = np.flatnonzero((y_test == 1) & (probas < frontiere))
+    rate = int(manques[np.argmax(probas[manques])])
+
+    for intitule, i in [
+        ("DOSSIER 1 — dénoncé avec la plus forte confiance", sur),
+        ("DOSSIER 2 — tout juste au-dessus de ma frontière", juste),
+        ("DOSSIER 3 — un canular que j'ai laissé passer", rate),
+    ]:
+        montrer_dossier(intitule, chaine, test[i], int(i_test[i]) + 1,
+                        probas[i], y_test[i], frontiere)
+
+    reference, chutes = importance_par_permutation(chaine, test, y_test)
+    print(f"\nSur quoi le système s'appuie globalement. J'abîme une colonne à la fois")
+    print(f"en mélangeant ses valeurs au hasard, et je regarde ce que perd l'AUC")
+    print(f"(référence : {reference:.3f}).")
+    print(f"\n{'colonne':>20}{'AUC abîmée':>13}{'chute':>10}")
+    for colonne, chute in chutes:
+        print(f"{colonne:>20}{reference - chute:>13.3f}{chute:>10.3f}")
+    return chutes
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1460,6 +1558,7 @@ def main():
     )
     phase14_promesse_a_80(facture13)
     phase15_deux_analystes(df, avec_etiquette, groupes, C, facture13)
+    phase16_trois_dossiers(chaine, avec_etiquette, (i_train, i_test), facture13)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 
