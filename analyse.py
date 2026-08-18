@@ -18,6 +18,7 @@ from scipy.sparse import csr_matrix, hstack
 from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              roc_auc_score)
@@ -1231,6 +1232,90 @@ def repetition_generale(df, df_brut, i_train, groupes, y, C):
     }
 
 
+def tranches_de_probabilite(y, probas, combien=10):
+    """Range les relevés par probabilité annoncée et les coupe en paquets égaux.
+
+    Des tranches de largeur fixe (0-0,1, 0,1-0,2…) ne tiennent pas ici : une fois
+    les probabilités corrigées, elles tomberaient toutes dans la première. Des
+    paquets de même effectif restent lisibles avant comme après.
+    """
+    ordre = np.argsort(probas, kind="stable")
+    lignes = []
+    for paquet in np.array_split(ordre, combien):
+        lignes.append({
+            "de": float(probas[paquet].min()),
+            "a": float(probas[paquet].max()),
+            "n": len(paquet),
+            "annonce": float(probas[paquet].mean()),
+            "observe": float(y[paquet].mean()),
+        })
+    return lignes
+
+
+def ecart_de_calibration(lignes):
+    """L'écart moyen entre ce qui est annoncé et ce qui se produit, pondéré."""
+    total = sum(l["n"] for l in lignes)
+    return sum(l["n"] * abs(l["annonce"] - l["observe"]) for l in lignes) / total
+
+
+def montrer_tranches(intitule, lignes):
+    print(f"\n{intitule}")
+    print(f"{'probabilité annoncée':>22}{'relevés':>9}{'annoncé':>10}"
+          f"{'observé':>10}{'écart':>9}")
+    for l in lignes:
+        print(f"{l['de']:>10.3f} – {l['a']:<9.3f}{l['n']:>9}{l['annonce']:>10.1%}"
+              f"{l['observe']:>10.1%}{l['annonce'] - l['observe']:>+9.1%}")
+    print(f"{'écart moyen':>22}{'':>9}{'':>10}{'':>10}"
+          f"{ecart_de_calibration(lignes):>9.1%}")
+
+
+def phase14_promesse_a_80(resultat13):
+    """Bien trier et mal chiffrer sont deux choses différentes."""
+    titre(14, "une promesse à 80 %")
+
+    y_test, probas, veille = (
+        resultat13["y_test"], resultat13["probas"], resultat13["veille"]
+    )
+
+    avant = tranches_de_probabilite(y_test, probas)
+    montrer_tranches("Ce que le système annonce, en face de ce qui s'est produit :", avant)
+
+    # La question de la conseillère, mot pour mot.
+    autour = (probas >= 0.75) & (probas <= 0.85)
+    print(f"\nRelevés annoncés entre 75 % et 85 % : {int(autour.sum())}")
+    if autour.any():
+        print(f"Sur 100 relevés comme ceux-là, sont vraiment des canulars : "
+              f"{y_test[autour].mean() * 100:.0f}")
+
+    trop = sum(l["n"] * (l["annonce"] - l["observe"]) for l in avant) / len(y_test)
+    print(f"\nLe système est {'TROP CONFIANT' if trop > 0 else 'TROP PRUDENT'} : il annonce "
+          f"en moyenne {abs(trop) * 100:.0f} points de\npourcentage "
+          f"{'de plus' if trop > 0 else 'de moins'} que ce qui se produit.")
+
+    # La correction s'apprend sur la validation de la répétition générale, jamais
+    # sur le test. Elle est croissante, donc elle ne change pas le classement :
+    # elle réécrit les nombres, pas l'ordre.
+    correcteur = IsotonicRegression(out_of_bounds="clip")
+    correcteur.fit(veille["probas_val"], veille["y_val"])
+    corrigees = correcteur.predict(probas)
+
+    apres = tranches_de_probabilite(y_test, corrigees)
+    montrer_tranches("Après correction :", apres)
+
+    print(f"\nAUC avant {roc_auc_score(y_test, probas):.3f}, après "
+          f"{roc_auc_score(y_test, corrigees):.3f}. La correction monte par paliers :")
+    print("elle met des relevés à égalité, d'où les quelques millièmes perdus, mais")
+    print("elle n'en fait passer aucun devant un autre.")
+    print(f"Écart moyen : {ecart_de_calibration(avant):.1%} avant, "
+          f"{ecart_de_calibration(apres):.1%} après.")
+
+    frontiere_corrigee = float(correcteur.predict([resultat13["retenue"]])[0])
+    print(f"\nMa frontière de la phase 13, {resultat13['retenue']:.3f} en probabilité brute,")
+    print(f"vaut {frontiere_corrigee:.1%} une fois corrigée — à comparer aux 6,25 % "
+          f"du point de bascule.")
+    return {"corrigees": corrigees, "correcteur": correcteur}
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1283,7 +1368,10 @@ def main():
     )
     phase11_duree(df)
     _, chaine = phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine, C)
-    phase13_facture_du_bureau(chaine, avec_etiquette, (i_train, i_test), df, groupes, C)
+    facture13 = phase13_facture_du_bureau(
+        chaine, avec_etiquette, (i_train, i_test), df, groupes, C
+    )
+    phase14_promesse_a_80(facture13)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

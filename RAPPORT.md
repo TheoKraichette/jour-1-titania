@@ -446,6 +446,56 @@ connaissant déjà la réponse.
 Ce que je recommande donc : garder 0,910 comme file d'attente de relecture — 49 dossiers, pas
 22 170 — sans prétendre qu'elle fait économiser des crédits. Elle trie, elle ne décide pas.
 
+## Phase 14 — Une promesse à 80 %
+
+La conseillère a raison, et le chiffre est brutal. **936 relevés** reçoivent une probabilité
+annoncée entre 75 % et 85 %. Sur cent d'entre eux, **2** sont vraiment des canulars.
+
+Je range les relevés du moins au plus suspect et je les coupe en dix paquets de même taille.
+Des tranches de largeur fixe ne tiendraient pas : une fois corrigées, les probabilités
+tomberaient toutes dans la première.
+
+| Probabilité annoncée | Relevés | Annoncé | Observé | Écart |
+|---|---|---|---|---|
+| 0,004 – 0,176 | 2 217 | 12,0 % | 0,2 % | +11,8 |
+| 0,299 – 0,353 | 2 217 | 32,6 % | 0,5 % | +32,2 |
+| 0,461 – 0,521 | 2 217 | 49,0 % | 0,5 % | +48,5 |
+| 0,593 – 0,685 | 2 217 | 63,7 % | 1,2 % | +62,5 |
+| 0,686 – 0,959 | 2 217 | 76,6 % | 2,4 % | +74,2 |
+| | | | **écart moyen** | **41,1** |
+
+**Le système est trop confiant.** Il annonce en moyenne 41 points de plus que ce qui se
+produit, et l'écart grandit à mesure qu'il se dit sûr de lui : 11 points dans la tranche du
+bas, 74 dans celle du haut.
+
+La cause n'est pas mystérieuse. J'ai demandé au modèle de traiter les canulars comme s'ils
+étaient aussi nombreux que les autres — sans ça, il n'en aurait dénoncé aucun. Il raisonne
+donc dans un monde où un relevé sur deux est un canular, alors qu'il y en a un sur 135. Ses
+nombres sont ceux de ce monde-là, pas du nôtre.
+
+**La correction.** J'apprends une courbe qui traduit « ce que le modèle annonce » en « ce qui
+se produit vraiment », sur le dernier quart de l'apprentissage — le même terrain que la
+frontière de la phase 13, et jamais le test.
+
+| Probabilité annoncée | Relevés | Annoncé | Observé | Écart |
+|---|---|---|---|---|
+| 0,005 – 0,005 | 2 217 | 0,5 % | 0,3 % | +0,2 |
+| 0,015 – 0,015 | 2 217 | 1,5 % | 0,8 % | +0,7 |
+| 0,019 – 0,019 | 2 217 | 1,9 % | 0,4 % | +1,5 |
+| 0,022 – 0,034 | 2 217 | 2,9 % | 1,1 % | +1,8 |
+| 0,034 – 0,160 | 2 217 | 4,9 % | 2,4 % | +2,5 |
+| | | | **écart moyen** | **1,2** |
+
+**41,1 % → 1,2 %.** Le classement, lui, ne bouge pas : AUC 0,680 avant, 0,677 après. La
+courbe monte par paliers, donc elle met des relevés à égalité — d'où les trois millièmes
+perdus — mais elle n'en fait passer aucun devant un autre. C'est exactement ce que la
+conseillère avait deviné : mon système triait correctement et chiffrait faux.
+
+Un dernier chiffre, qui referme la phase 13 : ma frontière de 0,910 en probabilité brute vaut
+**8,6 %** une fois corrigée. Le point de bascule du Bureau est à 6,25 %. La frontière la moins
+chère se trouve donc bien là où dénoncer redevient rentable — je ne l'avais pas cherchée
+comme ça, et les deux calculs tombent au même endroit.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |
