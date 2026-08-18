@@ -623,6 +623,62 @@ Deuxième surprise, plus attendue : `city`, `latitude` et `longitude` valent 0,0
 après que la phase 12 leur a consacré 502 colonnes. La baisse constatée à la phase 12 n'était
 donc pas un accident de mesure.
 
+## Phase 17 — L'angle mort du Bureau
+
+Les deux nombres de la phase 4, recalculés zone par zone, au même seuil. La dernière colonne
+est la fourchette de la phase 15, obtenue en retirant au sort les relevés de la zone.
+
+| Zone | Relevés | Canulars | Part | Attrapés | Justes | Fourchette |
+|---|---|---|---|---|---|---|
+| **ensemble du test** | 22 170 | 164 | 0,74 % | **62** | **1** | 54 à 69 |
+| États-Unis | 18 683 | 122 | 0,65 % | 60 | 1 | 51 à 68 |
+| Canada | 693 | 7 | 1,01 % | **29** | 1 | 0 à 67 |
+| Royaume-Uni | 217 | 8 | **3,69 %** | 75 | 5 | 40 à 100 |
+| Australie | 85 | 2 | 2,35 % | 100 | 4 | 100 à 100 |
+| Allemagne | 24 | 2 | **8,33 %** | 50 | 17 | 0 à 100 |
+| pays non renseigné | 2 468 | 23 | 0,93 % | 74 | 2 | 56 à 90 |
+
+Le conseiller a raison sur le fond : **les États-Unis pèsent 84 % du test**, donc le chiffre
+d'ensemble est le leur. 62 attrapés sur 100, c'est le chiffre américain (60) à deux points
+près, et il ne dit rien des autres zones.
+
+La proportion de canulars n'est pas la même partout, et l'écart est large : 0,65 % aux
+États-Unis contre 3,69 % au Royaume-Uni et 8,33 % en Allemagne. Ce n'est probablement pas que
+les Britanniques mentent plus. C'est que le Bureau, qui est américain, annote plus volontiers
+ce qui lui arrive de l'étranger — encore une fois, mon étiquette mesure son travail à lui.
+
+**Le seul écart qui ressemble à un trou est le Canada : 29 attrapés contre 60.** Mais sa
+fourchette va de 0 à 67, parce qu'elle repose sur **7 canulars**. Deux d'entre eux qui
+basculent, et le chiffre change de moitié. Je ne peux pas conclure que mon système marche mal
+au Canada ; je peux seulement dire que je n'en sais rien. Même chose pour l'Australie à 100 %,
+qui repose sur deux canulars tous les deux attrapés — un chiffre parfait qui ne prouve rien.
+
+### La décision sur la frontière
+
+Si je réglais la frontière séparément par zone, voici ce que ça donnerait :
+
+| Zone | Frontière | Calée sur |
+|---|---|---|
+| États-Unis | 0,913 | 122 canulars |
+| Canada | 0,815 | 7 canulars |
+| Royaume-Uni | 0,789 | 8 canulars |
+| Australie | 0,683 | 2 canulars |
+| Allemagne | 0,289 | 2 canulars |
+| pays non renseigné | 1,000 | 23 canulars |
+| **partout pareil** | **0,910** | 164 canulars |
+
+**Je garde une seule frontière, 0,910, partout.** Hors États-Unis, ces frontières sont calées
+sur 2 à 23 canulars : celle de l'Allemagne, 0,289, sort de deux relevés, ce n'est pas un
+réglage mais du bruit qu'on habillerait en décision. Et la seule zone qui aurait de quoi
+régler quelque chose, les États-Unis, propose 0,913 — trois millièmes d'écart avec la
+frontière commune. Une frontière par zone coûterait cinq réglages fragiles pour un gain nul
+là où on peut le mesurer.
+
+Ce que je recommande au Conseil avant l'infiltration mondiale : ne pas déployer hors des
+États-Unis sur la foi de ces chiffres. Il faut d'abord faire annoter assez de dossiers
+étrangers pour que les zones soient mesurables — quelques dizaines de canulars par zone, pas
+deux.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |

@@ -1501,6 +1501,67 @@ def phase16_trois_dossiers(chaine, df_brut, decoupe, resultat13):
     return chutes
 
 
+ZONES = {
+    "us": "États-Unis", "ca": "Canada", "gb": "Royaume-Uni",
+    "au": "Australie", "de": "Allemagne", "": "pays non renseigné",
+}
+
+
+def phase17_angle_mort(df_brut, decoupe, resultat13):
+    """Une moyenne portée par la zone qui pèse le plus lourd cache le reste."""
+    titre(17, "l'angle mort du Bureau")
+
+    _, i_test = decoupe
+    pays = (
+        df_brut[i_test.tolist()]["country"].fill_null("").str.strip_chars().to_numpy()
+    )
+    y_test, probas = resultat13["y_test"], resultat13["probas"]
+    predit = probas >= 0.5
+
+    print("Les deux nombres de la phase 4, recalculés zone par zone, au même seuil.")
+    print(f"\n{'zone':<21}{'relevés':>9}{'canulars':>10}{'part':>8}"
+          f"{'attrapés':>10}{'justes':>8}   fourchette")
+
+    def ligne(nom, dedans):
+        y, p = y_test[dedans], predit[dedans]
+        if y.sum() == 0:
+            print(f"{nom:<21}{dedans.sum():>9}{0:>10}{'0,00%':>8}"
+                  f"{'—':>10}{'—':>8}   pas mesurable")
+            return None
+        bas, haut = fourchette_par_tirage(y, probas[dedans], 0.5)
+        print(f"{nom:<21}{dedans.sum():>9}{int(y.sum()):>10}{y.mean():>8.2%}"
+              f"{recall_score(y, p) * 100:>10.0f}"
+              f"{precision_score(y, p, zero_division=0) * 100:>8.0f}"
+              f"   {bas * 100:.0f} à {haut * 100:.0f}")
+        return recall_score(y, p)
+
+    global_ = ligne("ensemble du test", np.ones(len(y_test), dtype=bool))
+    print()
+    connues = set()
+    resultats = {}
+    for code, nom in ZONES.items():
+        dedans = pays == code
+        if dedans.sum():
+            connues.add(code)
+            resultats[nom] = ligne(nom, dedans)
+    reste = ~np.isin(pays, list(connues))
+    if reste.sum():
+        ligne("autres pays", reste)
+
+    print(f"\nLes États-Unis pèsent {(pays == 'us').mean():.0%} du test : le chiffre")
+    print("d'ensemble est le leur, et il ne dit rien des autres zones.")
+
+    print("\nLa frontière la moins chère, si je la réglais zone par zone :")
+    for code, nom in ZONES.items():
+        dedans = pays == code
+        if dedans.sum() and y_test[dedans].sum():
+            seuil, cout = frontiere_la_moins_chere(y_test[dedans], probas[dedans])
+            print(f"  {nom:<21} {seuil:>6.3f}   sur {int(y_test[dedans].sum())} canulars")
+    print(f"  {'partout pareil':<21} {resultat13['retenue']:>6.3f}   sur "
+          f"{int(y_test.sum())} canulars")
+    return resultats
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1559,6 +1620,7 @@ def main():
     phase14_promesse_a_80(facture13)
     phase15_deux_analystes(df, avec_etiquette, groupes, C, facture13)
     phase16_trois_dossiers(chaine, avec_etiquette, (i_train, i_test), facture13)
+    phase17_angle_mort(avec_etiquette, (i_train, i_test), facture13)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 
