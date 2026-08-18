@@ -1072,6 +1072,144 @@ def phase12_ville_et_heure(df_brut, decoupe, avant, C):
     print("fréquence, appris sur la partie apprentissage seule, jamais sur le test.")
     return apres, chaine
 
+
+# La grille votée par le Conseil, en crédits.
+COUT_CANULAR_RATE = 30
+COUT_FAUSSE_ALERTE = 2
+
+
+def facture(y, probas, seuil):
+    """Ce que coûte au Bureau une frontière posée à `seuil`."""
+    denonce = probas >= seuil
+    rates = int((~denonce & (y == 1)).sum())
+    fausses = int((denonce & (y == 0)).sum())
+    return {
+        "rates": rates,
+        "fausses": fausses,
+        "attrapes": int((denonce & (y == 1)).sum()),
+        "credits": rates * COUT_CANULAR_RATE + fausses * COUT_FAUSSE_ALERTE,
+    }
+
+
+def frontiere_la_moins_chere(y, probas):
+    """La frontière qui coûte le moins cher, et sa facture.
+
+    La facture ne change qu'aux probabilités réellement observées : les parcourir
+    dans l'ordre décroissant suffit à toutes les essayer. Les ex æquo partent
+    ensemble, puisqu'aucune frontière ne saurait les séparer.
+    """
+    ordre = np.argsort(-probas, kind="stable")
+    attrapes = np.cumsum(y[ordre])
+    denonces = np.arange(1, len(y) + 1)
+    fin_de_paquet = np.r_[probas[ordre][1:] != probas[ordre][:-1], True]
+
+    seuils = np.r_[probas[ordre][fin_de_paquet], 1.0 + 1e-9]
+    pris = np.r_[attrapes[fin_de_paquet], 0]
+    accuses = np.r_[denonces[fin_de_paquet], 0]
+    couts = (y.sum() - pris) * COUT_CANULAR_RATE + (accuses - pris) * COUT_FAUSSE_ALERTE
+
+    i = int(np.argmin(couts))
+    return float(seuils[i]), int(couts[i])
+
+
+def courbe_de_la_facture(y, probas, retenue):
+    """La facture en fonction de la frontière, du premier au dernier crédit."""
+    grille = np.linspace(0, 1, 501)
+    couts = [facture(y, probas, s)["credits"] for s in grille]
+    os.makedirs("figures", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.plot(grille, couts, color="#1f4e79", linewidth=1.6)
+    ax.axvline(0.5, color="#888", linestyle="--",
+               label=f"frontière par défaut (0,5) : {facture(y, probas, 0.5)['credits']} cr.")
+    ax.axvline(retenue, color="#c1440e",
+               label=f"frontière retenue ({retenue:.3f}) : "
+                     f"{facture(y, probas, retenue)['credits']} cr.")
+    ax.set_xlabel("frontière")
+    ax.set_ylabel("facture (crédits)")
+    ax.set_title("Ce que coûte au Bureau chaque frontière possible")
+    ax.legend()
+    fig.savefig("figures/facture.png", dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print("\nCourbe : figures/facture.png")
+
+
+def phase13_facture_du_bureau(chaine, df_brut, decoupe, df, groupes, C):
+    """Un score n'est pas une décision : reste à poser la frontière, et à la payer."""
+    titre(13, "la facture du Bureau")
+
+    i_train, i_test = decoupe
+    y = df_brut["canular"].to_numpy().astype(int)
+    probas = chaine.probabilites(df_brut[i_test.tolist()])
+    y_test = y[i_test]
+
+    print(f"Grille du Conseil : un canular laissé passer coûte {COUT_CANULAR_RATE} "
+          f"crédits,\nune fausse alerte {COUT_FAUSSE_ALERTE}. Le reste est gratuit.")
+
+    bascule = COUT_FAUSSE_ALERTE / (COUT_CANULAR_RATE + COUT_FAUSSE_ALERTE)
+    print(f"Dénoncer un relevé de plus rapporte donc s'il a plus de {bascule:.2%} de")
+    print("chances d'être un canular : en dessous, la fausse alerte coûte plus cher.")
+
+    retenue, _ = frontiere_la_moins_chere(y_test, probas)
+    a_montrer = sorted({0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, retenue})
+
+    print(f"\n{'frontière':>10}{'dénoncés':>10}{'attrapés':>10}"
+          f"{'ratés':>8}{'fausses alertes':>17}{'facture':>10}")
+    for seuil in a_montrer:
+        f = facture(y_test, probas, seuil)
+        marque = "  <-" if seuil == retenue else ""
+        print(f"{seuil:>10.3f}{f['attrapes'] + f['fausses']:>10}{f['attrapes']:>10}"
+              f"{f['rates']:>8}{f['fausses']:>17}{f['credits']:>10}{marque}")
+    silence = int(y_test.sum()) * COUT_CANULAR_RATE
+    print(f"{'silence':>10}{0:>10}{0:>10}{int(y_test.sum()):>8}{0:>17}{silence:>10}")
+
+    defaut = facture(y_test, probas, 0.5)
+    retenu = facture(y_test, probas, retenue)
+    print(f"\nFacture à 0,5 (la frontière que personne n'a choisie) : "
+          f"{defaut['credits']} crédits")
+    print(f"Facture à {retenue:.3f} (la mienne)                       : "
+          f"{retenu['credits']} crédits")
+    print(f"Écart                                              : "
+          f"{defaut['credits'] - retenu['credits']} crédits économisés")
+    print(f"Pour mémoire, ne dénoncer personne en coûterait     : {silence} crédits")
+
+    courbe_de_la_facture(y_test, probas, retenue)
+
+    # Contrôle : la frontière choisie sur le test est la meilleure par construction.
+    # Celle-ci est réglée sans jamais le regarder, sur le quart le plus récent de
+    # l'apprentissage, puis appliquée au test comme au premier jour.
+    veille = repetition_generale(df, df_brut, i_train, groupes, y, C)
+    seuil_hors_test, _ = frontiere_la_moins_chere(veille["y_val"], veille["probas_val"])
+    aveugle = facture(y_test, probas, seuil_hors_test)
+    print(f"\nContrôle — frontière réglée sans regarder le test : {seuil_hors_test:.3f}, "
+          f"soit {aveugle['credits']} crédits sur le test\n"
+          f"(l'optimum du test en coûte {retenu['credits']}).")
+
+    return {"retenue": retenue, "facture_retenue": retenu["credits"],
+            "facture_defaut": defaut["credits"], "probas": probas, "y_test": y_test,
+            "veille": veille, "silence": silence}
+
+
+def repetition_generale(df, df_brut, i_train, groupes, y, C):
+    """Une répétition de l'exercice à l'intérieur de l'apprentissage.
+
+    Même découpe dans le temps, mais un cran plus tôt : on apprend sur les trois
+    premiers quarts de l'apprentissage et on se juge sur le dernier. Tout ce qui a
+    besoin d'être réglé — la frontière, la courbe de correction des probabilités —
+    se règle ici, où le test n'existe pas encore.
+    """
+    i_a, i_b, _ = decoupe_temporelle(df[i_train.tolist()], groupes[i_train], 0.25)
+    reserve = df_brut[i_train.tolist()]
+    chaine = Chaine(cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL, C=C).apprendre(
+        reserve[i_a.tolist()], y[i_train][i_a]
+    )
+    return {
+        "chaine": chaine,
+        "probas_val": chaine.probabilites(reserve[i_b.tolist()]),
+        "y_val": y[i_train][i_b],
+    }
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1123,7 +1261,8 @@ def main():
         avec_etiquette, (i_train, i_test), sans_trous, C
     )
     phase11_duree(df)
-    phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine, C)
+    _, chaine = phase12_ville_et_heure(avec_etiquette, (i_train, i_test), en_chaine, C)
+    phase13_facture_du_bureau(chaine, avec_etiquette, (i_train, i_test), df, groupes, C)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

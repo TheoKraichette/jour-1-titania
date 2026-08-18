@@ -431,6 +431,54 @@ sur un encodage faux.
 Aucun de mes encodages ne se sert de la cible : ce sont des comptages de fréquence, appris
 sur la partie apprentissage seule et jamais sur le test.
 
+## Phase 13 — La facture du Bureau
+
+Mon système ne rend pas un verdict, il rend un nombre entre 0 et 1. La frontière entre ce
+nombre et le mot « canular », je ne l'avais jamais posée : la bibliothèque le faisait à ma
+place, à 0,5, parce que c'est le milieu.
+
+Avec la grille du Conseil, chaque frontière a un prix. Un canular manqué coûte 30 crédits,
+une fausse alerte 2. Dénoncer un relevé de plus rapporte donc s'il a plus de **6,25 %** de
+chances d'être un canular — 2 sur 32 — et coûte de l'argent en dessous.
+
+| Frontière | Dénoncés | Attrapés | Ratés | Fausses alertes | Facture |
+|---|---|---|---|---|---|
+| 0,100 | 21 519 | 163 | 1 | 21 356 | 42 742 |
+| 0,300 | 15 478 | 138 | 26 | 15 340 | 31 460 |
+| **0,500** | 7 362 | 101 | 63 | 7 261 | **16 412** |
+| 0,700 | 1 954 | 46 | 118 | 1 908 | 7 356 |
+| 0,900 | 69 | 5 | 159 | 64 | 4 898 |
+| **0,910** | 49 | 5 | 159 | 44 | **4 858** |
+| ne rien dénoncer | 0 | 0 | 164 | 0 | 4 920 |
+
+![La facture selon la frontière](figures/facture.png)
+
+- Frontière retenue : **0,910**
+- Facture à 0,5 : **16 412 crédits**
+- Facture à 0,910 : **4 858 crédits**
+- Écart : **11 554 crédits économisés**
+
+La frontière par défaut coûtait plus de trois fois le prix de la mienne, et la raison tient
+en une ligne : à 0,5 le système dénonce 7 362 dossiers pour en trouver 101 vrais. Les 7 261
+fausses alertes coûtent 14 522 crédits à elles seules, quand les 63 canulars manqués n'en
+coûtent que 1 890. Le Conseil paie surtout mes erreurs de zèle.
+
+Il faut dire la suite honnêtement. **Ne dénoncer personne coûte 4 920 crédits**, et ma
+frontière fait 4 858 : je bats le silence de 62 crédits, soit 1,3 %. Ce n'est pas une
+victoire, c'est une égalité. La raison est celle de la phase 6 : il me faudrait 6,25 % de
+justesse pour qu'une dénonciation soit rentable, et je plafonne autour de 3 % — même en haut
+de mon classement, là où je suis le plus sûr de moi.
+
+Et le contrôle enfonce le clou. J'ai réglé la même frontière **sans regarder le test**, sur
+le dernier quart de l'apprentissage : elle tombe à 0,774 et coûte **5 752 crédits** sur le
+test, donc plus cher que le silence. Les 62 crédits d'avantage sont un gain qui n'existe que
+parce que j'ai choisi la frontière en connaissant déjà la réponse. Un Bureau qui déploierait
+ce système aujourd'hui ne les verrait pas.
+
+Ce que je recommande au Conseil, du coup : garder la frontière à 0,910 comme file d'attente
+de relecture — 49 dossiers, pas 22 170 — mais ne pas prétendre qu'elle fait économiser des
+crédits. Elle trie, elle ne décide pas.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |
