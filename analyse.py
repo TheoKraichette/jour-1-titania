@@ -1316,6 +1316,93 @@ def phase14_promesse_a_80(resultat13):
     return {"corrigees": corrigees, "correcteur": correcteur}
 
 
+# Cinq endroits où poser la coupure, tous défendables.
+PARTS_TEST = [0.20, 0.225, 0.25, 0.275, 0.30]
+TIRAGES = 1000
+
+
+def mesurer(y_test, predit, scores):
+    return {
+        "rappel": recall_score(y_test, predit),
+        "precision": precision_score(y_test, predit, zero_division=0),
+        "auc": roc_auc_score(y_test, scores),
+    }
+
+
+def fourchette_par_decoupe(df, df_brut, groupes, C):
+    """Refait la mesure en déplaçant la coupure, et rend ce que ça donne."""
+    y = df_brut["canular"].to_numpy().astype(int)
+    lignes = []
+    for part in PARTS_TEST:
+        i_tr, i_te, coupure = decoupe_temporelle(df, groupes, part)
+        chaine = Chaine(
+            cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL, C=C
+        ).apprendre(df_brut[i_tr.tolist()], y[i_tr])
+        predit, scores = chaine.repondre(df_brut[i_te.tolist()])
+        mesure = mesurer(y[i_te], predit, scores)
+        mesure.update(coupure=coupure, n_test=len(i_te), canulars=int(y[i_te].sum()))
+        lignes.append(mesure)
+    return lignes
+
+
+def fourchette_par_tirage(y_test, probas, seuil):
+    """Retire au sort, avec remise, les relevés de la partie test.
+
+    C'est la question du Conseil prise au mot : et si trois canulars étaient
+    tombés de l'autre côté ?
+    """
+    hasard = np.random.default_rng(GRAINE)
+    predit = probas >= seuil
+    rappels = []
+    for _ in range(TIRAGES):
+        tire = hasard.integers(0, len(y_test), len(y_test))
+        vrais = y_test[tire] == 1
+        if vrais.sum():
+            rappels.append(predit[tire][vrais].mean())
+    return np.percentile(rappels, [2.5, 97.5])
+
+
+def phase15_deux_analystes(df, df_brut, groupes, C, resultat13):
+    """Un chiffre nu ne veut rien dire quand il repose sur 164 relevés."""
+    titre(15, "deux analystes, deux chiffres")
+
+    y_test = resultat13["y_test"]
+    print(f"Taille de la partie test          : {len(y_test)} relevés")
+    print(f"Canulars qu'elle contient         : {int(y_test.sum())}")
+    print(f"Un canular pèse donc              : "
+          f"{100 / int(y_test.sum()):.2f} point de rappel")
+
+    lignes = fourchette_par_decoupe(df, df_brut, groupes, C)
+    print(f"\nLa même mesure, en déplaçant la coupure ({len(lignes)} découpes) :")
+    print(f"{'coupure':>12}{'test':>8}{'canulars':>10}{'attrapés':>10}"
+          f"{'justes':>8}{'AUC':>8}")
+    for l in lignes:
+        print(f"{str(l['coupure']):>12}{l['n_test']:>8}{l['canulars']:>10}"
+              f"{l['rappel'] * 100:>10.0f}{l['precision'] * 100:>8.0f}{l['auc']:>8.3f}")
+
+    rappels = [l["rappel"] for l in lignes]
+    aucs = [l["auc"] for l in lignes]
+    print(f"\nSur 100 canulars, attrapés : de {min(rappels) * 100:.0f} à "
+          f"{max(rappels) * 100:.0f} selon la découpe")
+    print(f"AUC                        : de {min(aucs):.3f} à {max(aucs):.3f}")
+
+    bas, haut = fourchette_par_tirage(y_test, resultat13["probas"], 0.5)
+    print(f"\nEn retirant au sort les relevés du test ({TIRAGES} tirages), les 95 %")
+    print(f"du milieu vont de {bas * 100:.0f} à {haut * 100:.0f} canulars attrapés sur 100.")
+
+    # J'annonce l'intervalle qui couvre les deux sources d'incertitude, pas le
+    # plus flatteur des deux.
+    bas_total, haut_total = min(min(rappels), bas), max(max(rappels), haut)
+    largeur = (haut_total - bas_total) * 100
+    print(f"\nLe nombre que j'annonce au Conseil : de {bas_total * 100:.0f} à "
+          f"{haut_total * 100:.0f} canulars attrapés sur 100.")
+    print(f"\nRéponse sur les deux analystes : 0,31 et 0,34 ne se départagent pas, parce")
+    print(f"que ma propre mesure s'étale sur {largeur:.0f} points d'un tirage à l'autre sans")
+    print("que le modèle change — trois canulars qui basculent en déplacent déjà "
+          f"{3 * 100 / int(y_test.sum()):.0f}.")
+    return lignes
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1372,6 +1459,7 @@ def main():
         chaine, avec_etiquette, (i_train, i_test), df, groupes, C
     )
     phase14_promesse_a_80(facture13)
+    phase15_deux_analystes(df, avec_etiquette, groupes, C, facture13)
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

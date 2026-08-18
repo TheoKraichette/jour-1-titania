@@ -496,6 +496,44 @@ Un dernier chiffre, qui referme la phase 13 : ma frontière de 0,910 en probabil
 chère se trouve donc bien là où dénoncer redevient rentable — je ne l'avais pas cherchée
 comme ça, et les deux calculs tombent au même endroit.
 
+## Phase 15 — Deux analystes, deux chiffres
+
+- Taille de la partie test : **22 170 relevés**
+- Canulars qu'elle contient réellement : **164**
+- Un canular pèse donc **0,61 point** de rappel à lui tout seul
+
+C'est ce dernier chiffre qui explique tout le reste. Mes deux nombres de la phase 4 ne se
+calculent pas sur 22 170 relevés, ils se calculent sur 164.
+
+**Cinq découpes**, en déplaçant la date de coupure entre 2010 et 2012 :
+
+| Coupure | Test | Canulars | Attrapés | Justes | AUC |
+|---|---|---|---|---|---|
+| 2012-05-13 | 17 736 | 131 | 59 | 1 | 0,680 |
+| 2012-01-12 | 19 954 | 147 | 61 | 1 | 0,685 |
+| 2011-10-10 | 22 170 | 164 | 62 | 1 | 0,680 |
+| 2011-05-12 | 24 387 | 227 | 59 | 2 | 0,684 |
+| 2010-11-21 | 26 604 | 274 | 57 | 2 | 0,673 |
+
+Le rappel va de **57 à 62**, l'AUC de **0,673 à 0,685**, et le modèle est le même à chaque
+fois — seule la date de coupure a bougé.
+
+J'ai aussi pris la question du Conseil au mot : et si trois canulars étaient tombés de
+l'autre côté ? Je retire au sort, avec remise, les relevés de la partie test, **1 000 fois**.
+Les 95 % du milieu vont de **54 à 69** canulars attrapés sur 100.
+
+**Le nombre que j'annonce donc : entre 54 et 69 canulars attrapés sur 100.** Je prends
+l'intervalle qui couvre les deux sources d'incertitude, pas le plus flatteur des deux.
+
+**Réponse au Conseil sur les deux analystes :** 0,31 et 0,34 ne se départagent pas, parce que
+ma propre mesure s'étale sur 15 points d'un tirage à l'autre sans que le modèle change d'une
+ligne — et il suffit que trois canulars basculent d'un côté à l'autre pour en déplacer 2. Les
+trois points qui séparent les deux analystes tiennent dans le bruit. Départager leurs systèmes
+demanderait une partie test bien plus fournie en canulars, pas un troisième chiffre.
+
+Cela vaut pour tous mes chiffres. Ceux que j'ai écrits jusqu'ici sont des points au milieu
+d'intervalles de cette largeur, et il faut les lire comme tels.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |
