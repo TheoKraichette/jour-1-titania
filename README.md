@@ -11,7 +11,7 @@ python analyse.py
 ```
 
 Le script télécharge lui-même la transmission (~15 Mo, non versionnée) et
-rejoue les six phases d'une traite.
+rejoue toutes les phases d'une traite. Il rend deux fois les mêmes nombres.
 
 Avec Docker, sans rien installer :
 

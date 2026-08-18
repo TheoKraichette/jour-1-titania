@@ -25,7 +25,7 @@ Je convertis sans rien supprimer : ce qui ne passe pas devient `null` et je le c
 | `duration_seconds` | nombre | 2 | 4 | 2, 8 et 0.5 suivis d'une apostrophe inversée, `2631600` entouré d'espaces |
 | `latitude` | nombre | 0 | 1 | `33q.200088` |
 | `longitude` | nombre | 0 | 0 | — |
-| `datetime` | date + heure | 0 | 1220 | `9/1/2012 24:00` |
+| `datetime` | date + heure | 0 | 1220 | `1/1/1910 24:00` |
 | `date_posted` | date | 0 | 0 | — |
 
 Les six autres champs sont du texte et le restent.
@@ -325,8 +325,9 @@ Deux natures d'aberration :
 | durée physiquement invraisemblable, plus d'une journée | 205 | témoin |
 
 Les 7 006 qui restent inutilisables ne sont pas un échec de lecture : ce sont des cases vides
-(3 017) ou des réponses qu'aucun traitement ne peut chiffrer — « unknown » (528), « ? » (177),
-« ongoing » (154), « all night ». Je ne leur invente pas de valeur.
+(3 017) ou des réponses qu'aucun traitement ne peut chiffrer — « unknown » (528), « seconds »
+(525), « ? » (177), « few seconds » (168). Je ne leur invente pas de valeur : « seconds » sans
+nombre devant, ce n'est pas une durée.
 
 Les trois durées les plus longues :
 
@@ -379,9 +380,11 @@ L'heure, je la pose sur un cercle : un sinus et un cosinus, au lieu d'un entier 
 23 h est donc trois fois plus proche de minuit que de 20 h, ce qui correspond au ciel. Sur
 une règle graduée, la première distance valait 23 et la seconde 3.
 
-Pour `shape`, j'ai fondu `changed` dans `changing` et `round` dans `circle`. Il reste **28
-formes**, et les plus rares — `delta`, `crescent`, `pyramid`, `hexagon`, `dome` — rejoignent
-le sac des villes rares.
+Pour `shape`, j'ai fondu `changed` dans `changing` et `round` dans `circle`. Je compte **30
+catégories au départ** : les 29 formes que le Conseil annonce, plus la case vide de 2 922
+relevés, que je garde comme une catégorie à part (phase 9). Il reste donc **28 formes**, et
+les plus rares — `delta`, `crescent`, `pyramid`, `hexagon`, `dome` — rejoignent le sac des
+villes rares.
 
 |  | Avant | Après |
 |---|---|---|

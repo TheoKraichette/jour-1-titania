@@ -1,6 +1,6 @@
 """Bureau d'Analyse Terrestre — relevés de la sonde Klaxo-3.
 
-Télécharge la transmission et rejoue les six phases d'une traite.
+Télécharge la transmission et rejoue toutes les phases d'une traite.
 
     python analyse.py
 """
@@ -125,7 +125,8 @@ def phase1_ouvrir_la_caisse():
     print(f"Lignes physiques (\\n)      : {lignes_physiques}")
     print(f"Enregistrements CSV        : {total}")
     print(f"Chargés (11 champs)        : {df.height}")
-    print(f"Mis à part                 : {len(rejets)}")
+    print(f"Mis à part                 : {len(rejets)} "
+          f"({len(rejets) / total:.2%} du fichier)")
     print(f"Cohérence                  : {df.height} + {len(rejets)} = {total}")
 
     if rejets:
@@ -756,6 +757,7 @@ def phase8_ordre_du_temps(df, groupes, avant, C):
         df.with_columns(an=pl.col("date_posted").dt.year())
         .group_by("an")
         .agg(
+            releves=pl.len(),
             taux=pl.col("canular").mean(),
             annotes=(pl.col("comments").str.contains(r"\(\(")).mean(),
         )
@@ -763,7 +765,8 @@ def phase8_ordre_du_temps(df, groupes, avant, C):
     )
     print("\nTaux de canulars et d'annotation du Bureau, par année de publication :")
     for ligne in par_an.iter_rows(named=True):
-        print(f"  {ligne['an']}  canulars {ligne['taux']:>6.2%}   "
+        print(f"  {ligne['an']}  {ligne['releves']:>6} relevés   "
+              f"canulars {ligne['taux']:>6.2%}   "
               f"dossiers annotés {ligne['annotes']:>6.2%}")
 
     apres = entrainer(
@@ -856,6 +859,17 @@ def phase11_duree(df):
     print(f"Relevés où les deux colonnes se contredisent : {compte(contradiction)}")
     print(f"Durée médiane : {df['duree'].median():.0f} secondes")
     print(f"Relevés annonçant plus d'une journée : {compte(pl.col('duree') > UN_JOUR)}")
+
+    illisibles = (
+        df.filter(~ecrite_vide & pl.col("duree_ecrite").is_null())["duration_hours_min"]
+        .str.to_lowercase()
+        .str.strip_chars()
+        .value_counts(sort=True)
+        .head(4)
+    )
+    print("  ce que contiennent les illisibles : " + ", ".join(
+        f"« {l['duration_hours_min']} » ({l['count']})" for l in illisibles.iter_rows(named=True)
+    ))
 
     print("\nDeux natures d'aberration :")
     print(f"  durée perdue par la transmission (0 alors que le témoin avait écrit) : "
@@ -1036,9 +1050,13 @@ def phase12_ville_et_heure(df_brut, decoupe, avant, C):
     print(f"  distance entre 23 h et 0 h  : {distance_horaire(23, 0):.3f}")
     print(f"  distance entre 23 h et 20 h : {distance_horaire(23, 20):.3f}")
 
+    brutes = (
+        df_brut["shape"].fill_null("").str.to_lowercase().str.strip_chars()
+    )
     formes = preparer(df_brut)["shape"].n_unique()
-    print(f"\nFormes après avoir fondu « changed » dans « changing » et « round »")
-    print(f"dans « circle » : {formes}, dont les plus rares seront regroupées ensuite.")
+    print(f"\nFormes : {brutes.n_unique()} au départ, dont {(brutes == '').sum()} relevés")
+    print("sans forme renseignée. Après avoir fondu « changed » dans « changing » et")
+    print(f"« round » dans « circle » : {formes}, la case vide comprise.")
 
     chaine = Chaine(
         cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL, C=C
@@ -1167,6 +1185,9 @@ def phase13_facture_du_bureau(chaine, df_brut, decoupe, df, groupes, C):
     retenu = facture(y_test, probas, retenue)
     print(f"\nFacture à 0,5 (la frontière que personne n'a choisie) : "
           f"{defaut['credits']} crédits")
+    print(f"  dont {defaut['fausses']} fausses alertes "
+          f"({defaut['fausses'] * COUT_FAUSSE_ALERTE} crédits) et {defaut['rates']} "
+          f"canulars manqués ({defaut['rates'] * COUT_CANULAR_RATE} crédits)")
     print(f"Facture à {retenue:.3f} (la mienne)                       : "
           f"{retenu['credits']} crédits")
     print(f"Écart                                              : "
