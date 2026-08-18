@@ -7,15 +7,13 @@
 - Lignes traitées à part : 196
 
 Le fichier arrive sans en-têtes, je les remets depuis le manifeste. J'évite les options de
-`read_csv` qui réparent les lignes cassées, parce qu'elles les suppriment sans prévenir : je
-lis ligne par ligne et j'écarte tout ce qui n'a pas exactement 11 champs. J'ai aussi compté
-les sauts de ligne du fichier brut, 88 875 aussi, donc rien n'a été fusionné en route.
+`read_csv` qui réparent les lignes cassées : elles les suppriment sans prévenir. Je lis ligne
+par ligne et j'écarte tout ce qui n'a pas exactement 11 champs. Les sauts de ligne du fichier
+brut sont 88 875 eux aussi, donc rien n'a été fusionné en route.
 
-Les 196 écartées ont toutes 12 champs. Le script en affiche une (ligne 877) : tout est
-décalé d'un cran à partir du commentaire, et la longitude déborde en douzième position.
-J'ai regardé si je pouvais les recoller, mais seulement 22 ont une reconstruction unique,
-84 en ont deux possibles et 90 aucune. Ce serait inventer des valeurs, donc je les laisse
-de côté — 0,22 % du fichier.
+Les 196 écartées ont toutes 12 champs. Le script en affiche une (ligne 877) : tout est décalé
+d'un cran à partir du commentaire. Seules 22 ont une reconstruction unique, 84 en ont deux
+possibles et 90 aucune — les recoller serait inventer des valeurs. 0,22 % du fichier.
 
 ## Phase 2 — Rien n'est du bon type
 
@@ -32,11 +30,10 @@ Je convertis sans rien supprimer : ce qui ne passe pas devient `null` et je le c
 
 Les six autres champs sont du texte et le restent.
 
-Les 1 220 heures `24:00` sont récupérables sans rien inventer : minuit de fin de journée,
-c'est 00:00 du lendemain. Je les bascule une fois le comptage fait, donc le tableau garde le
-chiffre de la conversion brute et la colonne finit quand même complète. Je ne fais pas pareil
-pour `33q.200088` : deviner ce que cachait le `q` serait inventer une coordonnée, je la laisse
-vide.
+Les 1 220 heures `24:00` se récupèrent sans rien inventer : minuit de fin de journée, c'est
+00:00 du lendemain. Je bascule une fois le comptage fait, donc le tableau garde le chiffre
+brut et la colonne finit complète. Pas question de faire pareil avec `33q.200088` : deviner
+ce que cachait le `q` serait inventer une coordonnée, je la laisse vide.
 
 | Anomalie | Compte | D'où ça vient |
 |---|---|---|
@@ -48,20 +45,18 @@ vide.
 | pays non renseigné | 12 365 | témoin |
 | coordonnées à (0, 0) | 1 494 | capteur |
 
-Pour l'origine je regarde qui écrit quoi. Les coordonnées sont calculées et pas tapées, donc
-une lettre au milieu vient du transport ; l'apostrophe collée à un chiffre, elle, est une
-faute de frappe. Le `24:00` revient 1220 fois : c'est une convention du système qui
-horodate, pas une erreur isolée. Les `&#44` sont un encodage ajouté pour que les virgules
-des témoignages ne cassent pas le CSV.
+Pour l'origine, je regarde qui écrit quoi : une coordonnée est calculée et pas tapée, donc
+une lettre au milieu vient du transport ; l'apostrophe collée à un chiffre est une faute de
+frappe ; le `24:00`, qui revient 1 220 fois, est une convention du système qui horodate ; les
+`&#44` sont un encodage ajouté pour que les virgules des témoignages ne cassent pas le CSV.
 
-Les deux dernières anomalies ne font planter aucune conversion, c'est ce qui les rend
-gênantes. Les 1 494 coordonnées à (0, 0) sont des villes comme `turin (italy)` que le
-géocodage n'a pas su placer : zéro est un nombre valide, donc rien ne proteste, mais le
-point atterrit au large de l'Afrique.
+Les deux dernières ne font planter aucune conversion, et c'est ce qui les rend gênantes. Les
+1 494 coordonnées à (0, 0) sont des villes comme `turin (italy)` que le géocodage n'a pas su
+placer : zéro est un nombre valide, donc rien ne proteste, mais le point atterrit au large de
+l'Afrique.
 
 Une seule valeur, `33q.200088`, suffirait à faire basculer toute la colonne `latitude` en
-texte si on laissait la bibliothèque deviner les types. Une fois les types corrigés, la
-carte que le Conseil demandait se trace sans rien changer d'autre :
+texte si on laissait la bibliothèque deviner. Types corrigés, la carte se trace :
 
 ![Carte des observations](figures/carte.png)
 
@@ -78,12 +73,12 @@ canular, ou d'un rapport d'élève qu'il ne peut pas certifier.
 
 Le Bureau annote les dossiers douteux entre doubles parenthèses : `((HOAX??))` devant le
 témoignage, ou `((NUFORC Note: Student report. PD))` à la fin. Je ne retiens que ce qui est
-écrit dans ces notes. 21 autres relevés contiennent bien le mot « hoax », mais c'est le
-témoin qui l'écrit, souvent pour jurer que son observation n'en est pas un.
+écrit dans ces notes — 21 autres relevés contiennent le mot « hoax », mais c'est le témoin
+qui l'écrit, souvent pour jurer que son observation n'en est pas un.
 
-J'ai regardé ce que le Bureau écrit d'autre. Il annote surtout des méprises — Vénus, Sirius,
-une traînée d'avion, un lancement de missile — soit 1 478 relevés. Je ne les compte pas :
-le témoin a bien vu quelque chose, il l'a mal identifié, ce n'est pas un mensonge.
+Le Bureau annote surtout des méprises : Vénus, Sirius, une traînée d'avion, un lancement de
+missile, 1 478 relevés en tout. Je ne les compte pas — le témoin a bien vu quelque chose, il
+l'a mal identifié, ce n'est pas un mensonge.
 
 Ce que la règle rate : tous les canulars que le Bureau n'a jamais annotés. Elle ne mesure
 pas les canulars, elle mesure le travail d'annotation du Bureau. 0,98 % est donc un
@@ -99,27 +94,24 @@ canulars.
 - Sur 100 relevés signalés, sont vraiment des canulars : **92**
 
 Ces deux nombres sont calculés sur un quart des relevés, soit **22 170 lignes dont 218
-canulars**, mises de côté avant l'entraînement et que le modèle n'a jamais vues. Le tirage
-est aléatoire mais stratifié, pour garder la même proportion de canulars des deux côtés, et
-la graine est fixée à 0 pour que le découpage soit toujours le même.
+canulars**, mises de côté avant l'entraînement et jamais vues par le modèle. Le tirage est
+stratifié, pour garder la même proportion des deux côtés, et la graine est fixée à 0.
 
-Le modèle est une régression logistique. Il reçoit le témoignage entier découpé en mots, la
-forme et le pays, la durée, les coordonnées, et le nombre de jours entre l'observation et sa
-publication.
+Le modèle est une régression logistique. Il reçoit le témoignage découpé en mots, la forme et
+le pays, la durée, les coordonnées, et le délai entre l'observation et sa publication.
 
-Un réglage avant de commencer : la force de régularisation. Le vocabulaire fait près de
-13 000 colonnes pour 650 canulars à l'entraînement, donc le modèle a toute la place
-d'apprendre par cœur. Je découpe une validation **dans la partie apprentissage** — 49 881
-relevés pour apprendre, 16 628 pour juger — et j'essaie six valeurs :
+Un réglage avant de commencer : la régularisation. Le vocabulaire fait près de 13 000 colonnes
+pour 650 canulars à l'entraînement, donc le modèle a toute la place d'apprendre par cœur. Je
+découpe une validation **dans la partie apprentissage** — 49 881 relevés pour apprendre,
+16 628 pour juger :
 
 | C | 0,003 | 0,01 | **0,03** | 0,1 | 0,3 | 1 |
 |---|---|---|---|---|---|---|
 | AUC sur la validation | 0,705 | 0,726 | **0,736** | 0,731 | 0,717 | 0,698 |
 
-Je retiens 0,03. La valeur par défaut des bibliothèques est 1, et c'est la pire des six :
-le modèle qu'on obtient sans rien régler est un modèle qui récite. Le test n'entre pas dans
-ce choix, et je ne retouche plus ce réglage — les comparaisons avant/après des phases
-suivantes portent ainsi sur ce que je corrige, pas sur un réglage qui aurait bougé en route.
+Je retiens 0,03. La valeur par défaut des bibliothèques est 1, et c'est la pire des six : le
+modèle qu'on obtient sans rien régler est un modèle qui récite. Le test n'entre pas dans ce
+choix, et je ne retouche plus ce réglage ensuite.
 
 Attraper 100 canulars sur 100, ça ne ressemble pas à un vrai résultat. Je regarde d'où ça
 vient à la phase suivante.
@@ -141,8 +133,7 @@ vient à la phase suivante.
 | `delai_jours` (`date_posted` − `datetime`) | le Bureau | à la publication | **oui** |
 
 `comments` compte pour deux lignes parce que deux personnes y écrivent, à deux moments. Je
-retire la note du Bureau et le délai de publication, je garde le récit du témoin : lui est
-bien là quand le signalement arrive.
+retire la note du Bureau et le délai de publication, je garde le récit du témoin.
 
 |  | Avant | Après |
 |---|---|---|
@@ -152,28 +143,24 @@ bien là quand le signalement arrive.
 | AUC (0,5 = tirage au sort) | 1,000 | 0,765 |
 
 Le premier chiffre n'avait pas le droit d'exister parce que la réponse à deviner était écrite
-dans le texte que je donnais à lire : le mot « hoax » de la note servait à la fois à
-fabriquer l'étiquette et à la retrouver. Le modèle ne prédisait rien, il recopiait une
-conclusion qu'un employé du Bureau avait tirée des semaines plus tôt. Devant un signalement
-qui vient d'arriver, cette note n'existe pas et la date de publication non plus : il ne reste
-que le récit du témoin, et y repérer un mensonge est autrement plus difficile.
+dans le texte que je donnais à lire : le mot « hoax » de la note servait à la fois à fabriquer
+l'étiquette et à la retrouver. Le modèle ne prédisait rien, il recopiait une conclusion qu'un
+employé du Bureau avait tirée des semaines plus tôt. Devant un signalement qui vient
+d'arriver, cette note n'existe pas — il ne reste que le récit du témoin, et y repérer un
+mensonge est autrement plus difficile. La troisième ligne le dit : pour attraper ses
+canulars, le modèle honnête en dénonce 4 997 là où le premier en dénonçait 235.
 
-La troisième ligne dit tout : pour attraper ses canulars, le modèle honnête en dénonce 4 997
-là où le premier en dénonçait 235.
+J'ai vérifié que le nettoyage tenait : plus aucun relevé étiqueté canular ne contient de
+marqueur, et les mots les plus révélateurs sont devenus du vocabulaire banal (`alleged`,
+`claim`, `wonderful`). J'ai aussi dû jeter une variable que j'avais ajoutée, la proportion de
+majuscules : elle valait 2,1 fois plus chez les canulars, parce que `((HOAX??))` est en
+capitales. C'était la note du Bureau qui rentrait, déguisée en statistique.
 
-J'ai vérifié que le nettoyage tenait. Plus aucun relevé étiqueté canular ne contient de
-marqueur, et les mots que le modèle juge les plus révélateurs sont devenus du vocabulaire
-banal (`alleged`, `claim`, `wonderful`) au lieu de `hoax`. J'ai aussi dû jeter une variable
-que j'avais ajoutée : la proportion de majuscules. Calculée sur `comments`, elle valait 2,1
-fois plus chez les canulars — parce que `((HOAX??))` est en capitales. C'était encore la note
-du Bureau qui rentrait, déguisée en statistique.
-
-Enfin, pour savoir si ce plancher venait de l'information manquante ou de mon choix de
-modèle, j'ai construit le meilleur système que je pouvais sans jamais lire le Bureau : un
-gradient boosting, avec le témoignage résumé en 120 dimensions. Il attrape **51 canulars sur
-100 avec 5 justes sur 100**, AUC 0,827. Il en attrape un peu moins que ma régression, mais
-en dénonçant deux fois moins de monde : 2 409 relevés contre 4 997. Une partie du plancher
-venait donc bien du modèle, et l'écart avec la phase 4 ne se referme pas pour autant.
+Reste à savoir si ce plancher vient de l'information manquante ou de mon choix de modèle. Un
+gradient boosting, avec le témoignage résumé en 120 dimensions, attrape **51 canulars sur 100
+avec 5 justes sur 100**, AUC 0,827 : un peu moins que ma régression, mais en dénonçant deux
+fois moins de monde (2 409 contre 4 997). Une partie du plancher venait donc du modèle, et
+l'écart avec la phase 4 ne se referme pas pour autant.
 
 ## Phase 6 — Le modèle le plus bête du Bureau
 
@@ -189,23 +176,18 @@ Le classement s'inverse d'une colonne à l'autre : plus un système attrape de c
 son taux de bonnes réponses baisse. C'est déjà tout le problème.
 
 **La mesure que je présente au Conseil : le nombre de canulars attrapés, mis en face du
-nombre de dossiers à relire.** Le Bureau veut arrêter de perdre du temps sur des signalements
-inventés, donc la seule question qui compte est combien on en retrouve, et à quel prix. Le
-stagiaire en retrouve zéro : son système ne fait gagner aucune minute à personne. Le mien en
-retrouve 126 sur 218 en faisant relire 4 997 dossiers au lieu de 22 170, soit près de 6
-canulars sur 10 pour 78 % de travail en moins ; le boosting en retrouve 112 pour 2 409
-dossiers, soit 89 % de travail en moins.
+nombre de dossiers à relire.** Le stagiaire en retrouve zéro, son système ne fait gagner une
+minute à personne. Le mien en retrouve 126 sur 218 en faisant relire 4 997 dossiers au lieu de
+22 170, soit 78 % de travail en moins ; le boosting en retrouve 112 pour 2 409 dossiers.
 
 Pourquoi son 99 % ne prouve rien : ce score ne mesure pas sa capacité à trier, il mesure la
-rareté des canulars. Comme ils ne sont que 0,98 % du fichier, répondre non à tout donne
-99,02 % de bonnes réponses sans jamais regarder un seul dossier. Appliqué à un fichier où un
-relevé sur deux serait un canular, le même système tomberait à 50 %. Son score dépend du
-fichier qu'on lui donne, pas de ce qu'il fait.
+rareté des canulars. Comme ils ne sont que 0,98 % du fichier, répondre non à tout suffit.
+Appliqué à un fichier où un relevé sur deux serait un canular, le même système tomberait à
+50 % — son score dépend du fichier qu'on lui donne, pas de ce qu'il fait.
 
-Il y a d'ailleurs une raison arithmétique pour laquelle je ne pouvais pas le battre sur cette
-mesure. Lui se trompe 218 fois, une par canular manqué, et n'accuse personne à tort. Pour
-faire mieux, il me faudrait accuser à tort moins souvent qu'à raison, donc une précision
-au-dessus de 50 %. J'en suis à 3. Aucun réglage n'y aurait changé quoi que ce soit.
+Je ne pouvais d'ailleurs pas le battre sur cette mesure, pour une raison arithmétique : il se
+trompe 218 fois et n'accuse personne à tort, donc il me faudrait accuser à tort moins souvent
+qu'à raison, soit une précision au-dessus de 50 %. J'en suis à 3.
 
 ## Phase 7 — Plusieurs témoins, un seul événement
 
@@ -217,15 +199,14 @@ l'observation**, ou si **leur témoignage est recopié mot pour mot**.
 - Relevés à cheval sur les deux côtés dans la découpe d'hier : **2 397**
 
 Le plus gros rassemblement est Tinley Park (Illinois), le 31 octobre 2004 — celui-là même que
-le conseiller à la cartographie cite dans son annotation. Le script l'affiche en entier, ses
-56 témoins alignés, tous du même côté de la nouvelle découpe.
+le conseiller à la cartographie cite. Le script l'affiche en entier, ses 56 témoins tous du
+même côté de la nouvelle découpe.
 
-Pour les recopies mot pour mot : 612 relevés, 251 textes distincts. Je ne les traite pas tous
-de la même façon. La plupart sont des formulations trop banales pour trancher — « Fireball »
-écrit par douze personnes dans douze villes différentes n'est pas un événement, c'est un mot
-courant. Je ne regroupe que les textes de plus de 80 caractères, soit 56 relevés, où la
-recopie ne peut pas être un hasard. Le Bureau confirme d'ailleurs lui-même sur l'un d'eux :
-« One of four reports from same source ».
+Les recopies mot pour mot font 612 relevés pour 251 textes distincts, mais je ne les regroupe
+pas toutes : « Fireball » écrit par douze personnes dans douze villes n'est pas un événement,
+c'est un mot courant. Je ne retiens que les textes de plus de 80 caractères, soit 56 relevés,
+où la recopie ne peut pas être un hasard. Le Bureau le confirme sur l'un d'eux : « One of four
+reports from same source ».
 
 |  | Avant | Après |
 |---|---|---|
@@ -233,19 +214,17 @@ recopie ne peut pas être un hasard. Le Bureau confirme d'ailleurs lui-même sur
 | Sur 100 signalés, justes | 3 | 3 |
 | AUC | 0,765 | 0,773 |
 
-Les deux nombres bougent peu, et dans le bon sens. C'est logique : 2 397 relevés étaient mal
-placés, mais sur 88 679 cela reste 2,7 % du fichier, et surtout mon modèle ne reconnaissait
-déjà plus grand chose depuis que la note du Bureau lui a été retirée. La fuite était réelle,
-son effet ici est petit — ça ne rend pas la correction facultative, ça montre qu'elle aurait
-davantage compté sur un modèle qui s'appuyait plus sur le texte.
+Les deux nombres bougent peu, et dans le bon sens : 2 397 relevés étaient mal placés, mais
+cela reste 2,7 % du fichier. La fuite était réelle, son effet est petit — ça ne rend pas la
+correction facultative, ça montre qu'elle aurait davantage compté sur un modèle qui
+s'appuyait plus sur le texte.
 
 ## Phase 8 — L'ordre des choses
 
 Je coupe sur **`date_posted`**, la date à laquelle le Bureau a reçu le dossier, et non sur
-celle de l'observation. C'est dans cet ordre-là que les dossiers arrivent réellement au
-Bureau, et surtout c'est dans cet ordre qu'il les annote : comme mon étiquette vient de ses
-notes, couper sur la date d'observation laisserait le modèle apprendre d'annotations écrites
-après celles du test. Je coupe aussi par événement, pour ne pas défaire la phase 7.
+celle de l'observation : c'est dans cet ordre qu'il les annote, et comme mon étiquette vient
+de ses notes, couper sur la date d'observation laisserait le modèle apprendre d'annotations
+écrites après celles du test. Je coupe aussi par événement, pour ne pas défaire la phase 7.
 
 - Date de coupure : **10 octobre 2011**
 
@@ -261,14 +240,13 @@ après celles du test. Je coupe aussi par événement, pour ne pas défaire la p
 | Sur 100 signalés, justes | 3 | 1 |
 | AUC | 0,773 | **0,681** |
 
-Les deux proportions ne sont pas égales, et en regardant année par année on comprend
-pourquoi : les canulars n'ont pas diminué, c'est le Bureau qui a changé de pratique. Avant
-2004 il n'annotait presque rien — zéro canular sur 982 relevés en 1998 — les notes
-apparaissent en 2004, culminent vers 2008 à 2,85 %, puis retombent à 0,48 % en 2012.
+Les deux proportions ne sont pas égales, et l'année par année dit pourquoi : les canulars
+n'ont pas diminué, c'est le Bureau qui a changé de pratique. Avant 2004 il n'annotait presque
+rien — zéro canular sur 982 relevés en 1998 — les notes apparaissent en 2004, culminent à
+2,85 % en 2008, puis retombent à 0,48 % en 2012.
 
 Mon étiquette ne mesure donc pas la fréquence des canulars mais le rythme de travail des
-annotateurs, et ce rythme change dans le temps. C'est ce qui explique la chute de l'AUC de
-0,773 à 0,681 : le modèle a appris ce qu'était un canular pendant les années fastes de
+annotateurs. D'où la chute de 0,773 à 0,681 : le modèle a appris pendant les années fastes de
 l'annotation, et on le note sur une période où le Bureau annotait deux fois moins.
 
 ## Phase 9 — Les cases vides
@@ -282,19 +260,16 @@ Les trois colonnes les plus trouées, et la proportion de canulars de chaque cô
 | `duration_hours_min` | 3 017 | **2,42 %** | 0,93 % |
 
 Un trou n'est pas neutre : dans les trois cas, un relevé incomplet est plus souvent un
-canular. L'écart est net sur la durée écrite à la main, où l'on passe de 0,93 % à 2,42 %,
-soit deux fois et demie plus. Ça se comprend : quelqu'un qui invente une observation ne
-prend pas la peine de remplir les cases facultatives.
+canular. L'écart est net sur la durée écrite à la main, deux fois et demie plus. Ça se
+comprend — quelqu'un qui invente une observation ne remplit pas les cases facultatives.
 
-Jeter ces lignes aurait supprimé 12 365 relevés dont la vacuité était justement un indice.
-Les remplir avec la valeur la plus fréquente aurait fait passer un dossier bâclé pour un
+Jeter ces lignes aurait supprimé 12 365 relevés dont la vacuité était justement un indice ;
+les remplir avec la valeur la plus fréquente aurait fait passer un dossier bâclé pour un
 dossier ordinaire.
 
 **Le traitement retenu :** je garde le vide comme une catégorie à part entière, et j'ajoute
-pour chacune des trois colonnes une variable qui vaut 1 quand la case était vide. Ça ne
-détruit pas ce que je viens de mesurer, parce que l'écart de proportion que montre le tableau
-est exactement ce que cette variable transporte : le modèle continue de savoir qu'il y avait
-un trou à cet endroit, même après que le trou a été bouché.
+pour chacune des trois colonnes une variable qui vaut 1 quand la case était vide. Le modèle
+continue donc de savoir qu'il y avait un trou, même après que le trou a été bouché.
 
 |  | Avant | Après |
 |---|---|---|
@@ -309,18 +284,16 @@ un trou à cet endroit, même après que le trou a été bouché.
 | Relevés | 66 509 | 22 170 |
 | Proportion de canulars | 1,06 % | 0,74 % |
 
-Le test contient 164 canulars. Ce n'est pas énorme, mais c'est assez pour que mes deux
-nombres veuillent dire quelque chose — le risque d'une partie test presque vide, que le
-Conseil signale, ne se réalise pas ici.
+Le test contient 164 canulars — pas énorme, mais assez pour que mes deux nombres veuillent
+dire quelque chose : le risque d'une partie test presque vide, que le Conseil signale, ne se
+réalise pas ici.
 
 Tout ce qui s'apprend depuis les données vit maintenant dans une classe `Chaine` : le
-vocabulaire des mots, la liste des catégories, les médianes qui bouchent les trous, les
-échelles. Sa méthode `apprendre` n'est appelée qu'après la découpe et ne reçoit que la partie
-apprentissage. Elle n'a matériellement pas accès au test.
-
-Et un relevé neuf traverse tout d'un seul appel. Le script en fait passer un, inventé à la
-main, en fin de phase : onze champs bruts entrent, le typage, les variables dérivées, le
-vocabulaire et le modèle s'enchaînent, un verdict sort.
+vocabulaire, les catégories, les médianes qui bouchent les trous, les échelles. Sa méthode
+`apprendre` n'est appelée qu'après la découpe et ne reçoit que la partie apprentissage — elle
+n'a matériellement pas accès au test. Et un relevé neuf traverse tout d'un seul appel : le
+script en fait passer un, inventé à la main, onze champs bruts en entrée et un verdict en
+sortie.
 
 |  | Avant | Après |
 |---|---|---|
@@ -328,11 +301,10 @@ vocabulaire et le modèle s'enchaînent, un verdict sort.
 | Sur 100 signalés, justes | 1 | 1 |
 | AUC | 0,686 | 0,686 |
 
-Les chiffres ne bougent pas, et je préfère le dire franchement : je calculais déjà mes
-médianes et mon vocabulaire sur la seule partie apprentissage, donc la faute que le Conseil
-cherchait n'était pas commise. Ce qui change n'est pas le résultat mais la garantie. Avant,
-il fallait me croire sur parole en relisant le code ; maintenant c'est la structure qui
-l'impose, puisque l'objet qui apprend ne voit jamais le test.
+Les chiffres ne bougent pas, et je préfère le dire : je calculais déjà mes médianes et mon
+vocabulaire sur la seule partie apprentissage, donc la faute que le Conseil cherchait n'était
+pas commise. Ce qui change n'est pas le résultat mais la garantie — avant il fallait me croire
+sur parole, maintenant c'est la structure qui l'impose.
 
 ## Phase 11 — Combien de temps ça a duré
 
@@ -364,12 +336,11 @@ Les trois durées les plus longues :
 66 276 000 s (  767 jours)  écrit : « 21 years »
 ```
 
-Je les garde. Ce sont des relevés valides par ailleurs, et les supprimer changerait le nombre
-de lignes, ce que l'étape m'interdit. Je marque simplement l'invraisemblance dans une colonne
-à part, et le modèle lit le logarithme de la durée plutôt que la durée elle-même, ce qui rend
-ces extrêmes inoffensifs. C'est aussi pour ça que je donne la médiane et pas la moyenne :
-trois relevés à trente ans suffiraient à déplacer une moyenne, ils ne déplacent pas la
-médiane d'une seconde.
+Je les garde : ce sont des relevés valides par ailleurs, et les supprimer changerait le nombre
+de lignes, ce que l'étape m'interdit. Je marque l'invraisemblance dans une colonne à part, et
+le modèle lit le logarithme de la durée, ce qui rend ces extrêmes inoffensifs. C'est aussi
+pourquoi je donne la médiane et pas la moyenne — trois relevés à trente ans déplaceraient une
+moyenne, ils ne déplacent pas la médiane d'une seconde.
 
 Un relevé où les deux colonnes racontent deux histoires différentes :
 
@@ -398,21 +369,19 @@ verse toutes les autres dans un même sac « ville rare ».
 Une colonne par ville aurait ajouté 19 000 colonnes dont la plupart n'auraient contenu qu'un
 seul 1 — le modèle aurait appris par cœur des villes qu'il ne reverra jamais.
 
-Pour l'heure, je la pose sur un cercle : deux coordonnées, un sinus et un cosinus, au lieu
-d'un entier de 0 à 23.
+L'heure, je la pose sur un cercle : un sinus et un cosinus, au lieu d'un entier de 0 à 23.
 
 | Distance | Dans mon encodage |
 |---|---|
 | entre 23 h et 0 h | **0,261** |
 | entre 23 h et 20 h | **0,765** |
 
-23 h est donc bien trois fois plus proche de minuit que de 20 h, ce qui correspond au ciel.
-Sur une règle graduée, la première distance valait 23 et la seconde 3.
+23 h est donc trois fois plus proche de minuit que de 20 h, ce qui correspond au ciel. Sur
+une règle graduée, la première distance valait 23 et la seconde 3.
 
-Pour `shape` : j'ai fondu `changed` dans `changing` et `round` dans `circle`, deux paires qui
-désignent la même chose. Il reste **28 formes**, et celles vues moins de 20 fois dans
-l'apprentissage — `delta`, `crescent`, `pyramid`, `flare`, `hexagon`, `dome` — rejoignent le
-même sac que les villes rares.
+Pour `shape`, j'ai fondu `changed` dans `changing` et `round` dans `circle`. Il reste **28
+formes**, et les plus rares — `delta`, `crescent`, `pyramid`, `hexagon`, `dome` — rejoignent
+le sac des villes rares.
 
 |  | Avant | Après |
 |---|---|---|
@@ -421,15 +390,14 @@ même sac que les villes rares.
 | AUC | 0,686 | 0,680 |
 
 Le résultat baisse, et je ne vais pas prétendre le contraire. La ville n'apporte rien parce
-que le modèle dispose déjà de la latitude et de la longitude, qui portent la même information
-géographique en deux colonnes au lieu de cinq cents. J'ai essayé des seuils plus sévères
-(50, 100, 200) : aucun ne fait mieux. L'heure circulaire, elle, ne change presque rien à
-l'AUC, mais elle corrige une absurdité — mon modèle croyait minuit à vingt-trois heures de
-distance de 23 h. Je préfère un chiffre honnête sur un encodage juste qu'un chiffre flatteur
-sur un encodage faux.
+que le modèle a déjà la latitude et la longitude, qui portent la même information en deux
+colonnes au lieu de cinq cents ; des seuils plus sévères (50, 100, 200) ne font pas mieux.
+L'heure circulaire ne change presque rien à l'AUC, mais elle corrige une absurdité — mon
+modèle croyait minuit à vingt-trois heures de distance de 23 h. Je préfère un chiffre honnête
+sur un encodage juste qu'un chiffre flatteur sur un encodage faux.
 
-Aucun de mes encodages ne se sert de la cible : ce sont des comptages de fréquence, appris
-sur la partie apprentissage seule et jamais sur le test.
+Aucun de ces encodages ne se sert de la cible : ce sont des comptages de fréquence, appris sur
+la partie apprentissage seule.
 
 ## Phase 13 — La facture du Bureau
 
@@ -437,9 +405,8 @@ Mon système ne rend pas un verdict, il rend un nombre entre 0 et 1. La frontiè
 nombre et le mot « canular », je ne l'avais jamais posée : la bibliothèque le faisait à ma
 place, à 0,5, parce que c'est le milieu.
 
-Avec la grille du Conseil, chaque frontière a un prix. Un canular manqué coûte 30 crédits,
-une fausse alerte 2. Dénoncer un relevé de plus rapporte donc s'il a plus de **6,25 %** de
-chances d'être un canular — 2 sur 32 — et coûte de l'argent en dessous.
+Un canular manqué coûte 30 crédits, une fausse alerte 2. Dénoncer un relevé de plus rapporte
+donc s'il a plus de **6,25 %** de chances d'être un canular — 2 sur 32 — et coûte en dessous.
 
 | Frontière | Dénoncés | Attrapés | Ratés | Fausses alertes | Facture |
 |---|---|---|---|---|---|
@@ -458,26 +425,23 @@ chances d'être un canular — 2 sur 32 — et coûte de l'argent en dessous.
 - Facture à 0,910 : **4 858 crédits**
 - Écart : **11 554 crédits économisés**
 
-La frontière par défaut coûtait plus de trois fois le prix de la mienne, et la raison tient
-en une ligne : à 0,5 le système dénonce 7 362 dossiers pour en trouver 101 vrais. Les 7 261
-fausses alertes coûtent 14 522 crédits à elles seules, quand les 63 canulars manqués n'en
-coûtent que 1 890. Le Conseil paie surtout mes erreurs de zèle.
+La frontière par défaut coûtait plus de trois fois le prix de la mienne : à 0,5 le système
+dénonce 7 362 dossiers pour en trouver 101 vrais, et ces 7 261 fausses alertes coûtent 14 522
+crédits quand les 63 canulars manqués n'en coûtent que 1 890. Le Conseil payait surtout mes
+erreurs de zèle.
 
 Il faut dire la suite honnêtement. **Ne dénoncer personne coûte 4 920 crédits**, et ma
 frontière fait 4 858 : je bats le silence de 62 crédits, soit 1,3 %. Ce n'est pas une
-victoire, c'est une égalité. La raison est celle de la phase 6 : il me faudrait 6,25 % de
-justesse pour qu'une dénonciation soit rentable, et je plafonne autour de 3 % — même en haut
-de mon classement, là où je suis le plus sûr de moi.
+victoire, c'est une égalité — il me faudrait 6,25 % de justesse pour qu'une dénonciation soit
+rentable, et je plafonne autour de 3 % même en haut de mon classement.
 
-Et le contrôle enfonce le clou. J'ai réglé la même frontière **sans regarder le test**, sur
-le dernier quart de l'apprentissage : elle tombe à 0,774 et coûte **5 752 crédits** sur le
-test, donc plus cher que le silence. Les 62 crédits d'avantage sont un gain qui n'existe que
-parce que j'ai choisi la frontière en connaissant déjà la réponse. Un Bureau qui déploierait
-ce système aujourd'hui ne les verrait pas.
+Le contrôle enfonce le clou : la même frontière réglée **sans regarder le test**, sur le
+dernier quart de l'apprentissage, tombe à 0,774 et coûte **5 752 crédits**, donc plus cher que
+le silence. Mes 62 crédits d'avance n'existent que parce que j'ai choisi la frontière en
+connaissant déjà la réponse.
 
-Ce que je recommande au Conseil, du coup : garder la frontière à 0,910 comme file d'attente
-de relecture — 49 dossiers, pas 22 170 — mais ne pas prétendre qu'elle fait économiser des
-crédits. Elle trie, elle ne décide pas.
+Ce que je recommande donc : garder 0,910 comme file d'attente de relecture — 49 dossiers, pas
+22 170 — sans prétendre qu'elle fait économiser des crédits. Elle trie, elle ne décide pas.
 
 ## Ce qui a bougé, phase par phase
 
