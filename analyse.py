@@ -1234,7 +1234,7 @@ def phase13_facture_du_bureau(chaine, df_brut, decoupe, df, groupes, C):
 
     return {"retenue": retenue, "facture_retenue": retenu["credits"],
             "facture_defaut": defaut["credits"], "probas": probas, "y_test": y_test,
-            "veille": veille, "silence": silence}
+            "veille": veille, "silence": silence, "chaine": chaine}
 
 
 def repetition_generale(df, df_brut, i_train, groupes, y, C):
@@ -1562,6 +1562,152 @@ def phase17_angle_mort(df_brut, decoupe, resultat13):
     return resultats
 
 
+def courbe_des_annees(par_an):
+    """Une année en abscisse, la proportion de canulars en ordonnée."""
+    os.makedirs("figures", exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    ax.bar(par_an["an"], par_an["releves"], color="#d8dee6", label="relevés reçus")
+    ax.set_ylabel("relevés reçus dans l'année")
+    ax.set_xlabel("année de publication")
+    second = ax.twinx()
+    second.plot(par_an["an"], par_an["taux"] * 100, color="#c1440e", marker="o",
+                linewidth=1.8, label="canulars")
+    second.set_ylabel("part de canulars (%)", color="#c1440e")
+    ax.set_title("Le Bureau n'a pas annoté de la même façon d'une année à l'autre")
+    fig.savefig("figures/annees.png", dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    print("\nCourbe : figures/annees.png")
+
+
+# Ce qu'on peut regarder sans jamais savoir si le relevé était un canular.
+# On rappelle les analystes dès qu'un indicateur s'écarte de moitié de sa
+# référence, dans un sens ou dans l'autre.
+ECART_TOLERE = 1.5
+
+
+def indicateurs_sans_verite(chaine, df_brut, frontiere):
+    """Trois mesures qui ne demandent jamais la réponse.
+
+    Au Bureau, la vérité arrive des semaines plus tard ou jamais : tout ce qui
+    a besoin de l'étiquette est inutilisable en surveillance.
+    """
+    prepare = preparer(df_brut)
+    texte = chaine.tfidf.transform(prepare[chaine.colonne_texte].to_list())
+    connues = {
+        n.split("_", 1)[1]
+        for n in chaine.encodeur.get_feature_names_out()
+        if n.startswith(f"x{chaine.cols_cat.index('city')}_")
+    }
+    villes = prepare["city"].fill_null("").to_list()
+    return {
+        "alertes": float((chaine.probabilites(df_brut) >= frontiere).mean()),
+        "sans_mot_connu": float((texte.getnnz(axis=1) == 0).mean()),
+        "ville_inconnue": sum(v not in connues for v in villes) / len(villes),
+        # Compter ce que le Bureau annote ne demande pas de savoir si le relevé
+        # était un canular : les notes parlent aussi de méprises.
+        "annotes": float(
+            prepare["comments"].fill_null("").str.contains(r"\(\(").mean()
+        ),
+    }
+
+
+def phase18_transmission_archive(df, df_brut, decoupe, groupes, C, resultat13, phase8):
+    """L'étiquette est une habitude de travail, et les habitudes bougent."""
+    titre(18, "la transmission d'archive")
+
+    i_train, i_test = decoupe
+    y = df_brut["canular"].to_numpy().astype(int)
+
+    par_an = (
+        df.with_columns(an=pl.col("date_posted").dt.year())
+        .group_by("an", maintain_order=True)
+        .agg(
+            releves=pl.len(),
+            taux=pl.col("canular").mean(),
+            annotes=pl.col("comments").str.contains(r"\(\(").mean(),
+        )
+        .sort("an")
+    )
+    print("Part de canulars, année après année, sur toute la période.")
+    print("La dernière colonne compte les dossiers que le Bureau a annotés, ce qui")
+    print("se sait sans connaître la réponse.")
+    print(f"\n{'année':>7}{'relevés':>9}{'canulars':>10}{'annotés':>10}")
+    for l in par_an.iter_rows(named=True):
+        barre = "#" * int(round(l["taux"] * 1000))
+        print(f"{l['an']:>7}{l['releves']:>9}{l['taux']:>10.2%}"
+              f"{l['annotes']:>10.2%}  {barre}")
+    creux, pic = par_an["taux"].min(), par_an["taux"].max()
+    print(f"\nLa courbe est tout sauf plate : {creux:.2%} au creux, {pic:.2%} au pic.")
+    print("Avant 2005 le Bureau n'écrit presque jamais « canular » ; la pratique")
+    print("apparaît, culmine en 2008, puis retombe.")
+    courbe_des_annees(par_an)
+
+    # L'épreuve : n'apprendre que sur la moitié la plus ancienne, et se faire
+    # juger sur exactement le même test qu'à la phase 8.
+    i_vieux, _, bascule = decoupe_temporelle(df[i_train.tolist()], groupes[i_train], 0.5)
+    reserve = df_brut[i_train.tolist()]
+    ancienne = Chaine(
+        cols_cat=COLS_CAT_FINAL, cols_num=COLS_NUM_FINAL, C=C
+    ).apprendre(reserve[i_vieux.tolist()], y[i_train][i_vieux])
+    predit, scores = ancienne.repondre(df_brut[i_test.tolist()])
+    vieux = mesurer(y[i_test], predit, scores)
+
+    print(f"\nL'épreuve : apprendre sur les {len(i_vieux)} relevés les plus anciens")
+    print(f"(publiés avant {bascule}), être jugé sur les {len(i_test)} plus récents.")
+    print(f"\n{'':<38}{'phase 8':>10}{'archives':>10}")
+    print(f"{'sur 100 canulars réels, attrapés':<38}"
+          f"{phase8['rappel'] * 100:>10.0f}{vieux['rappel'] * 100:>10.0f}")
+    print(f"{'sur 100 signalés, vraiment canulars':<38}"
+          f"{phase8['precision'] * 100:>10.0f}{vieux['precision'] * 100:>10.0f}")
+    print(f"{'AUC':<38}{phase8['auc']:>10.3f}{vieux['auc']:>10.3f}")
+
+    # Ce qu'on surveillera quand la vérité n'arrivera jamais.
+    frontiere = resultat13["retenue"]
+    chaine = resultat13["chaine"]
+    reference = indicateurs_sans_verite(chaine, df_brut[i_train.tolist()], frontiere)
+    observe = indicateurs_sans_verite(chaine, df_brut[i_test.tolist()], frontiere)
+
+    print("\nCe que le Bureau surveillera, sans jamais connaître la réponse.")
+    print(f"On rappelle les analystes au-delà d'un écart de {ECART_TOLERE:.1f}, "
+          f"dans un sens ou dans l'autre.")
+    print(f"\n{'indicateur':<34}{'référence':>11}{'test':>9}{'écart':>9}   verdict")
+    noms = {
+        "alertes": "part des relevés dénoncés",
+        "sans_mot_connu": "relevés sans un mot connu",
+        "ville_inconnue": "relevés d'une ville jamais vue",
+        "annotes": "dossiers annotés par le Bureau",
+    }
+    for cle, nom in noms.items():
+        rapport = observe[cle] / max(reference[cle], 1e-9)
+        sonne = rapport > ECART_TOLERE or rapport < 1 / ECART_TOLERE
+        print(f"{nom:<34}{reference[cle]:>11.2%}{observe[cle]:>9.2%}"
+              f"{rapport:>9.2f}   {'ALERTE' if sonne else 'calme'}")
+
+    par_mois = df.height / (
+        (df["date_posted"].max() - df["date_posted"].min()).days / 30.44
+    )
+    print(f"\nLe Bureau reçoit {par_mois:.0f} relevés par mois en moyenne : de")
+    print("quoi calculer ces quatre nombres tous les mois sans qu'ils sautent au hasard.")
+
+    # Aucun ne sonne ci-dessus, et c'est l'effet de la moyenne : comparer treize
+    # ans d'apprentissage à trois ans de test écrase le mouvement. Surveillé au
+    # rythme prévu, le même indicateur se réveille.
+    annuel = par_an["annotes"].to_list()
+    annees = par_an["an"].to_list()
+    sonneries = [
+        (annees[i], annuel[i - 1], annuel[i])
+        for i in range(1, len(annuel))
+        if annuel[i - 1] > 0
+        and not 1 / ECART_TOLERE <= annuel[i] / annuel[i - 1] <= ECART_TOLERE
+    ]
+    print(f"\nLe même indicateur d'annotation, comparé d'une année à la "
+          f"suivante, sonne {len(sonneries)} fois :")
+    for an, avant_, apres_ in sonneries:
+        print(f"  {an} : {avant_:.2%} → {apres_:.2%}")
+    print("Ces années-là sont exactement celles où le Bureau a changé ses habitudes.")
+    return vieux
+
+
 def phase9_cases_vides(df, decoupe, avant, C):
     """Mesurer ce que dit un trou avant de le boucher."""
     titre(9, "les cases vides")
@@ -1621,6 +1767,9 @@ def main():
     phase15_deux_analystes(df, avec_etiquette, groupes, C, facture13)
     phase16_trois_dossiers(chaine, avec_etiquette, (i_train, i_test), facture13)
     phase17_angle_mort(avec_etiquette, (i_train, i_test), facture13)
+    phase18_transmission_archive(
+        df, avec_etiquette, (i_train, i_test), groupes, C, facture13, dans_le_temps
+    )
     print("\nFin de l'analyse. Les chiffres sont à reporter dans RAPPORT.md.")
 
 

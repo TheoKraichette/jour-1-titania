@@ -679,6 +679,88 @@ Ce que je recommande au Conseil avant l'infiltration mondiale : ne pas déployer
 étrangers pour que les zones soient mesurables — quelques dizaines de canulars par zone, pas
 deux.
 
+## Phase 18 — La transmission d'archive
+
+### La courbe
+
+| Année | Relevés | Canulars | Dossiers annotés |
+|---|---|---|---|
+| 1998 | 982 | 0,00 % | 0,20 % |
+| 2000 | 3 367 | 0,00 % | 0,30 % |
+| 2003 | 5 379 | 0,02 % | 0,73 % |
+| 2004 | 5 779 | 0,07 % | **5,16 %** |
+| 2005 | 5 827 | 0,72 % | 5,66 % |
+| 2007 | 5 385 | 2,17 % | 8,88 % |
+| **2008** | 5 611 | **2,85 %** | 6,29 % |
+| 2011 | 6 129 | 1,99 % | 6,46 % |
+| 2012 | 8 756 | **0,48 %** | 3,84 % |
+| 2014 | 3 320 | 1,69 % | 3,89 % |
+
+![La part de canulars, année après année](figures/annees.png)
+
+**La courbe est tout sauf plate : 0,00 % au creux, 2,85 % au pic.** Le conseiller a raison,
+et le tableau montre en plus *pourquoi*. La colonne de droite compte les dossiers annotés,
+toutes annotations confondues : elle bondit de 0,73 % à 5,16 % en 2004. Ce n'est pas le
+nombre de canulars qui a été multiplié par sept cette année-là, c'est le nombre de dossiers
+que quelqu'un a pris la peine de commenter. Les trois époques que le Conseil imagine
+existent : avant 2004 on n'annote pas, de 2005 à 2011 on annote beaucoup, après 2012 ça
+retombe de moitié.
+
+### L'épreuve
+
+J'apprends sur les **33 254 relevés les plus anciens** — tout ce qui est publié avant le
+15 septembre 2005 — et je me fais juger sur exactement le même test qu'à la phase 8.
+
+|  | Phase 8 | Sur les archives |
+|---|---|---|
+| Sur 100 canulars, attrapés | 62 | **5** |
+| Sur 100 signalés, justes | 1 | 1 |
+| AUC | 0,681 | **0,523** |
+
+**0,523, c'est le hasard.** Un modèle qui n'a lu que les archives ne sait rien du présent, et
+la raison est dans la première colonne du tableau : avant 2005, le Bureau n'a annoté que
+quelques dizaines de canulars sur 33 254 dossiers. Le modèle n'a pas appris une définition
+périmée du canular, il n'a pas pu en apprendre du tout. La définition n'existait pas encore.
+
+### Ce qu'on surveille quand la vérité n'arrive jamais
+
+Quatre indicateurs, dont aucun ne demande de savoir si le relevé était un canular. On les
+regarde **tous les mois** — le Bureau reçoit 457 relevés par mois, de quoi les calculer sans
+qu'ils sautent au hasard. **On rappelle les analystes dès qu'un indicateur s'écarte de moitié
+de sa référence**, dans un sens ou dans l'autre.
+
+| Indicateur | Référence | Test | Écart | |
+|---|---|---|---|---|
+| part des relevés dénoncés | 0,16 % | 0,22 % | 1,40 | calme |
+| relevés sans un mot connu du vocabulaire | 0,13 % | 0,18 % | 1,43 | calme |
+| relevés d'une ville jamais vue | 62,74 % | 63,98 % | 1,02 | calme |
+| dossiers annotés par le Bureau | 4,44 % | 3,85 % | 0,87 | calme |
+
+Le quatrième est le plus important, et c'est celui auquel je pensais le moins : compter ce
+que le Bureau annote ne demande pas de savoir si le dossier était un canular, puisque ses
+notes parlent aussi de Vénus et de traînées d'avion. C'est donc un indicateur aveugle, et il
+regarde pourtant exactement là où la dérive se produit.
+
+**Aucun ne sonne, et je ne vais pas faire semblant du contraire.** Mais c'est un effet de la
+moyenne : comparer treize ans d'apprentissage à trois ans de test écrase le mouvement. Au
+rythme prévu, année après année, le même indicateur se réveille :
+
+```
+2003 : 0,44 % → 0,73 %
+2004 : 0,73 % → 5,16 %
+2007 : 4,35 % → 8,88 %
+2012 : 6,46 % → 3,84 %
+```
+
+Quatre sonneries, et ce sont exactement les années où le Bureau a changé ses habitudes — la
+mise en place de l'annotation en 2004, le pic de 2007, le relâchement de 2012. Un analyste
+rappelé en 2004 et en 2012 aurait vu venir la chute de la phase 8 sans jamais avoir besoin de
+connaître une seule réponse.
+
+C'est aussi la limite à écrire noir sur blanc : ces indicateurs voient bouger ce qui entre et
+la façon dont le Bureau travaille, mais ils ne mesurent pas si le système a raison. Le jour où
+mon modèle se trompera sans que rien ne change autour, ils resteront muets.
+
 ## Ce qui a bougé, phase par phase
 
 | Phase | Ce que je corrige | Attrapés | Justes | AUC |
@@ -695,6 +777,23 @@ La seule correction qui fait vraiment mal est la phase 8. Les autres déplacent 
 de peu, parce que le gros de la triche avait déjà été retiré en phase 5 avec la note du
 Bureau. Passer de 0,77 à 0,68 en remettant les dossiers dans l'ordre du temps, c'est la
 mesure de ce que valait vraiment mon système : il ne prédisait pas l'avenir, il le relisait.
+
+Les six phases suivantes n'ont pas déplacé ces deux nombres — elles ont changé ce qu'on peut
+en faire.
+
+| Phase | Ce que je rends | Le chiffre |
+|---|---|---|
+| 13 | la frontière la moins chère, en crédits | 16 412 → **4 858** (silence : 4 920) |
+| 14 | ce que le système annonce contre ce qui se produit | écart 41,1 % → **1,2 %** |
+| 15 | le même nombre, avec sa fourchette | 62 devient **54 à 69** |
+| 16 | ce sur quoi il s'appuie vraiment | `comments` 0,109, `duration_seconds` **0,000** |
+| 17 | zone par zone au lieu d'une moyenne | 60 aux États-Unis, **29** au Canada (± 33) |
+| 18 | appris sur les archives seules | 62 → **5**, AUC **0,523** |
+
+Si je devais n'en retenir qu'une : la 15. Tous les chiffres au-dessus sont des points au
+milieu d'intervalles larges de quinze points, et c'est vrai aussi de ceux des douze premières
+phases. Le système attrape entre 54 et 69 canulars sur 100, dénonce cinquante fois trop de
+monde pour y arriver, et ne rapporte au Bureau que 62 crédits de plus que s'il se taisait.
 
 Deux lancements du script rendent exactement les mêmes nombres. Il a fallu fixer trois
 choses pour ça : la graine du solveur, qui mélange les relevés avant de travailler ; l'ordre
